@@ -2,7 +2,6 @@ package login
 
 import spray.can.Http
 import akka.actor.Actor
-import spray.http.Uri
 
 class ConnectActor extends Actor {
   val destination = Destination("www.bbc.co.uk")

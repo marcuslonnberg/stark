@@ -1,4 +1,4 @@
-package login
+package se.marcuslonnberg
 
 import akka.actor.{ActorLogging, Props, ActorRef, Actor}
 import spray.http._

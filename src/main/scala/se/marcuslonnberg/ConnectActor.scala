@@ -1,4 +1,4 @@
-package login
+package se.marcuslonnberg
 
 import spray.can.Http
 import akka.actor.Actor

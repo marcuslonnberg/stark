@@ -1,6 +1,7 @@
+package se.marcuslonnberg
+
 import akka.actor.{Props, ActorSystem}
 import akka.io.IO
-import login.ConnectActor
 import spray.can.Http
 
 object ProxyApp extends App {

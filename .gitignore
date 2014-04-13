@@ -1,0 +1,12 @@
+logs
+project/project
+project/target
+target
+.idea
+*.iml
+/out
+.idea_modules
+.DS_Store
+*.class
+.*.sw*
+

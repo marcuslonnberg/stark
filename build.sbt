@@ -8,4 +8,4 @@ version := "1.0"
 
 libraryDependencies ++= Akka ++ Spray
 
-resolvers ++= Resolvers.all
+resolvers ++= Dependencies.Resolvers.all

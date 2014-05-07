@@ -15,6 +15,8 @@ object LoginProxyApp extends App {
   implicit val system = ActorSystem("proxy")
 
   val conf = ConfigFactory.load()
+  val serverInterface = conf.as[String]("server.interface")
+  val serverPort = conf.as[Int]("server.port")
 
   val apiHost = Uri.Host(conf.as[String]("server.apiHost"))
   val proxy = system.actorOf(ProxyActor.props(apiHost), "proxy")
@@ -29,5 +31,5 @@ object LoginProxyApp extends App {
     proxyApi ! AddProxy(ProxyConf(Host("cnn.local"), Uri("http://edition.cnn.com")))
   }
 
-  IO(Http) ! Http.Bind(connector, interface = "localhost", port = 8081)
+  IO(Http) ! Http.Bind(connector, interface = serverInterface, port = serverPort)
 }

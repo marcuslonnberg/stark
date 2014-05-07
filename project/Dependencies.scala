@@ -15,6 +15,14 @@ object Dependencies {
       "io.spray" % "spray-testkit" % version)
   }
 
+  val Json4s = {
+    Seq("org.json4s" %% "json4s-native" % "3.2.9")
+  }
+
+  val ScalaTest = {
+    Seq("org.scalatest" %% "scalatest" % "2.1.5" % "test")
+  }
+
   object Resolvers {
     val Spray = Seq(
       "spray repo" at "http://repo.spray.io/"

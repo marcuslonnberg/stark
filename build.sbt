@@ -6,6 +6,6 @@ organization := "se.marcuslonnberg"
 
 version := "1.0"
 
-libraryDependencies ++= Akka ++ Spray
+libraryDependencies ++= Akka ++ Spray ++ Json4s ++ ScalaTest
 
 resolvers ++= Dependencies.Resolvers.all

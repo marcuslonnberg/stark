@@ -16,8 +16,8 @@ object LoginProxyApp extends App {
 
   val conf = ConfigFactory.load()
 
-  val apiDomain = Uri.Host(conf.as[String]("server.apiDomain"))
-  val proxy = system.actorOf(ProxyActor.props(apiDomain), "proxy")
+  val apiHost = Uri.Host(conf.as[String]("server.apiHost"))
+  val proxy = system.actorOf(ProxyActor.props(apiHost), "proxy")
   val auth = system.actorOf(AuthActor.props(), "auth")
 
   val connector = system.actorOf(ConnectActor.props(proxy, auth), "connector")

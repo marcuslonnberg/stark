@@ -37,7 +37,7 @@ class AuthActor extends Actor with ActorLogging {
   val CallbackUri = Uri(config.as[String]("callbackUrl"))
   val CheckUri = Uri(config.as[String]("checkUrl"))
   val SetCookiePath = Uri.Path(config.as[String]("setCookiePath"))
-  val AllowedEmails = config.as[Option[String]]("allowedEmails").map(_.r)
+  val AllowedEmails = config.as[Option[String]]("authorizedEmailPattern").map(_.r)
   val SourceParameter = "source"
   val CookieParameter = "cookie"
 

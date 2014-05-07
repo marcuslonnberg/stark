@@ -37,6 +37,7 @@ class AuthActor extends Actor with ActorLogging {
   val CallbackUri = Uri(config.as[String]("callbackUrl"))
   val CheckUri = Uri(config.as[String]("checkUrl"))
   val SetCookiePath = Uri.Path(config.as[String]("setCookiePath"))
+  val AllowedEmails = config.as[Option[String]]("allowedEmails").map(_.r)
   val SourceParameter = "source"
   val CookieParameter = "cookie"
 
@@ -51,7 +52,7 @@ class AuthActor extends Actor with ActorLogging {
   }
 
   case class StoreLogin(requestUri: Uri, userInfo: UserInfo)
-  
+
   def state(cookieAuths: Map[String, AuthInfo], headerAuths: Map[String, AuthInfo]): Receive = {
     case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isSetCookieUri(uri) =>
       (request.uri.query.get(SourceParameter), request.uri.query.get(CookieParameter)) match {
@@ -96,7 +97,11 @@ class AuthActor extends Actor with ActorLogging {
       val sender = context.sender()
       Google.callback(request, CallbackUri).onComplete {
         case Success(AuthCallback(requestUri, userInfo)) =>
-          self.tell(StoreLogin(requestUri, userInfo), sender)
+          if (isAuthorized(userInfo)) {
+            self.tell(StoreLogin(requestUri, userInfo), sender)
+          } else {
+            sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Access denied"))
+          }
         case Failure(ex) =>
           log.error(ex, "Error in auth callback")
           sender ! HttpResponse(StatusCodes.InternalServerError, "Error in auth")
@@ -127,6 +132,16 @@ class AuthActor extends Actor with ActorLogging {
 
       // Set cookie on login domain and redirect to source URI
       sender ! AuthResponse(RedirectSetCookie(requestUri, code))
+  }
+
+  def isAuthorized(userInfo: UserInfo) = {
+    (AllowedEmails, userInfo.email) match {
+      case (Some(allowedEmails), Some(email))
+        if allowedEmails.findFirstIn(email).isDefined =>
+        true
+      case (Some(_), _) => false
+      case _ => true
+    }
   }
 
   def RedirectSetCookie(redirectionUri: Uri, cookieValue: String) = {

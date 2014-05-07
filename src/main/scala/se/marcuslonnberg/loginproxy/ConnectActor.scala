@@ -1,26 +1,16 @@
 package se.marcuslonnberg.loginproxy
 
-import akka.actor.{ActorLogging, Actor}
+import akka.actor.{Props, ActorRef, ActorLogging, Actor}
 import spray.can.Http
-import se.marcuslonnberg.loginproxy.ConnectActor._
-import se.marcuslonnberg.loginproxy.proxy.{ProxyConf, ProxyActor}
 
 object ConnectActor {
-
-  case class SetProxies(proxies: List[ProxyConf])
-
+  def props(proxyActor: ActorRef, authActor: ActorRef) = Props(classOf[ConnectActor], proxyActor, authActor)
 }
 
-class ConnectActor extends Actor with ActorLogging {
-  override def receive = state(List())
-
-  def state(proxies: List[ProxyConf]): Receive = {
+class ConnectActor(proxyActor: ActorRef, authActor: ActorRef) extends Actor with ActorLogging {
+  override def receive = {
     case _: Http.Connected =>
-      val proxy = context.actorOf(ProxyActor.props(proxies))
+      val proxy = context.actorOf(ConnectionActor.props(proxyActor, authActor))
       sender ! Http.Register(proxy)
-
-    case SetProxies(newProxies: List[ProxyConf]) =>
-      log.info("Changing proxies to ({}):\n{}", newProxies.size, newProxies.mkString("\n"))
-      context.become(state(newProxies))
   }
 }

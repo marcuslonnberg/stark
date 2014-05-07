@@ -19,8 +19,6 @@ object Dependencies {
 
   val ScalaTest = Seq("org.scalatest" %% "scalatest" % "2.1.5" % "test")
 
-  val Oltu = Seq("org.apache.oltu.oauth2" % "org.apache.oltu.oauth2.client" % "1.0.0")
-
   val TypeSafeConfig = {
     Seq("com.typesafe" % "config" % "1.2.0",
       "net.ceedubs" %% "ficus" % "1.0.0")
@@ -28,9 +26,9 @@ object Dependencies {
 
   val Logback = Seq("ch.qos.logback" % "logback-classic" % "1.1.1")
 
-  val CommonsCodec = Seq("commons-codec" % "commons-codec" % "1.9")
+  val NScala = Seq("com.github.nscala-time" %% "nscala-time" % "1.0.0")
 
-  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ Oltu ++ TypeSafeConfig ++ Logback ++ CommonsCodec
+  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala
 
   object Resolvers {
     val Spray = Seq(

@@ -89,7 +89,7 @@ class AuthActor extends Actor with ActorLogging {
           if (request.method == HttpMethods.GET) {
             sender ! AuthResponse(Google.initialRequest(CallbackUri, request.uri))
           } else {
-            sender ! AuthResponse(HttpResponse(StatusCodes.BadRequest, "Log in with a GET request"))
+            sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Log in with a GET request"))
           }
       }
     case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isCallbackUri(uri) =>

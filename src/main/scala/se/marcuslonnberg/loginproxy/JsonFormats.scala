@@ -12,19 +12,13 @@ object JsonFormats {
     case uri: Uri => JString(uri.toString())
   }))
 
-  implicit val listHeaderFormat = new CustomSerializer[List[Header]](format => ( {
-    case json: JObject =>
-      json.values.map {
-        case (key, value: String) =>
-          Header(key, value)
-        case (key, value) =>
-          throw new RuntimeException(s"In key '$key' the value is not a string")
-      }.toList
+  implicit val uriPathFormat = new CustomSerializer[Uri.Path](format => ( {
+    case json: JString => Uri.Path(json.s)
   }, {
-    case headers: List[Header] =>
-      val map = headers.map(h => h.name -> JString(h.value))
-      JObject(map)
+    case path: Uri.Path => JString(path.toString())
   }))
+
+  implicit val headerFormat = FieldSerializer[Header]()
 
   implicit val proxyFormat = FieldSerializer[ProxyConf]()
 }

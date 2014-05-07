@@ -9,10 +9,10 @@ import spray.http.HttpRequest
 case class Destination(host: String, port: Int = 0)
 
 object ProxyActor {
-  def props(host: Destination) = Props(classOf[ProxyActor], host)
+  def props(hosts: Map[String, Destination]) = Props(classOf[ProxyActor], hosts)
 }
 
-class ProxyActor(destination: Destination) extends Actor with ActorLogging {
+class ProxyActor(hosts: Map[String, Destination]) extends Actor with ActorLogging {
 
   import context._
 
@@ -20,19 +20,25 @@ class ProxyActor(destination: Destination) extends Actor with ActorLogging {
 
   override def receive = {
     case request: HttpRequest =>
-      val uri = request.uri
-        .withHost(destination.host)
-        .withPort(destination.port)
+      val address = request.uri.authority.host.address
+      hosts.get(address) match {
+        case Some(destination) =>
+          val uri = request.uri
+            .withHost(destination.host)
+            .withPort(destination.port)
 
-      val headers = request.headers.map {
-        case _: HttpHeaders.Host => HttpHeaders.Host(destination.host, destination.port)
-        case other => other
+          val headers = request.headers.map {
+            case _: HttpHeaders.Host => HttpHeaders.Host(destination.host, destination.port)
+            case other => other
+          }
+          val proxiedRequest = request.copy(uri = uri).withHeaders(headers)
+
+          io ! proxiedRequest
+
+          context.become(response(sender), discardOld = false)
+        case None =>
+          sender ! HttpResponse(StatusCodes.NotFound, s"No proxy for $address")
       }
-      val proxiedRequest = request.copy(uri = uri).withHeaders(headers)
-
-      io ! proxiedRequest
-
-      context.become(response(sender), discardOld = false)
   }
 
   def response(receiver: ActorRef): Receive = {

@@ -38,8 +38,9 @@ class AuthActor extends Actor with ActorLogging {
   val CheckUri = Uri(config.as[String]("checkUrl"))
   val SetCookiePath = Uri.Path(config.as[String]("setCookiePath"))
   val AllowedEmails = config.as[Option[String]]("authorizedEmailPattern").map(_.r)
-  val SourceParameter = "source"
+
   val CookieParameter = "cookie"
+  val SourceParameter = "source"
 
   override def receive = state(Map(), Map())
 
@@ -59,6 +60,9 @@ class AuthActor extends Actor with ActorLogging {
         case (Some(source), Some(cookieValue)) =>
           // Set cookie on source domain and redirect to source url
           sender ! AuthResponse(RedirectSetCookie(Uri(source), cookieValue))
+        case _ =>
+          val response = HttpResponse(StatusCodes.BadRequest, s"Missing parameter '$CookieParameter' or '$SourceParameter'")
+          sender ! AuthResponse(response)
       }
     case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isCheckUri(uri) =>
       val loginCookie = getLoginCookie(request)
@@ -88,7 +92,7 @@ class AuthActor extends Actor with ActorLogging {
           }
         case _ =>
           if (request.method == HttpMethods.GET) {
-            sender ! AuthResponse(Google.initialRequest(CallbackUri, request.uri))
+            sender ! AuthResponse(Google.initialRequest(request, CallbackUri, request.uri))
           } else {
             sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Log in with a GET request"))
           }
@@ -129,6 +133,8 @@ class AuthActor extends Actor with ActorLogging {
       val code = Random.nextLong().toString
       val newCookieAuths = cookieAuths + (code -> AuthInfo(userInfo, expires = None))
       context.become(state(newCookieAuths, headerAuths))
+
+      log.info("Storing login '{}' with userInfo: {}", code, userInfo)
 
       // Set cookie on login domain and redirect to source URI
       sender ! AuthResponse(RedirectSetCookie(requestUri, code))

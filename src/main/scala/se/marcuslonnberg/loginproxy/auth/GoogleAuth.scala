@@ -9,14 +9,15 @@ import spray.client.pipelining._
 import scala.Some
 import scala.concurrent.{ExecutionContext, Future}
 import org.json4s._
-import org.json4s.JsonDSL._
 import org.json4s.JsonAST._
 import se.marcuslonnberg.loginproxy.Json4sProtocol
 import akka.actor.ActorRefFactory
-import spray.http.HttpHeaders.Location
+import spray.http.HttpHeaders.{Location, `Set-Cookie`}
 import se.marcuslonnberg.loginproxy.auth.AuthActor.{AuthCallback, UserInfo}
+import se.marcuslonnberg.loginproxy.utils.AES
+import se.marcuslonnberg.loginproxy.utils.Implicits._
 
-trait GoogleAuth {
+trait GoogleAuth extends StateOps {
 
   implicit def actorRefFactory: ActorRefFactory
 
@@ -25,34 +26,36 @@ trait GoogleAuth {
   val google = ConfigFactory.load().getConfig("auth.google")
   val clientId = google.as[String]("clientId")
   val clientSecret = google.as[String]("clientSecret")
+  val stateCookieName = google.as[String]("stateCookieName")
 
-  val SecurityToken = "123"
+  def initialRequest(request: HttpRequest, callbackUri: Uri, sourceUri: Uri) = {
+    val state = generateState(sourceUri, request)
 
-  def initialRequest(callbackUri: Uri, sourceUri: Uri) = {
     val parameters = Map(
       "client_id" -> clientId,
       "response_type" -> "code",
       "scope" -> "openid email profile",
       "redirect_uri" -> callbackUri.toString(),
-      "state" -> (SecurityToken + sourceUri.toString())) // TODO: generate security token and encrypt sourceUri
+      "state" -> state.message)
 
     val uri = Uri("https://accounts.google.com/o/oauth2/auth").copy(query = Query(parameters))
 
     HttpResponse(
       status = StatusCodes.TemporaryRedirect,
-      headers = Location(uri) :: Nil)
+      headers = Location(uri) :: `Set-Cookie`(state.cookie) :: Nil)
   }
 
   def callback(request: HttpRequest, callbackUri: Uri): Future[AuthCallback] = {
     (request.uri.query.get("code"), request.uri.query.get("state")) match {
-      case (Some(code), Some(state)) =>
-        require(state.startsWith(SecurityToken), "Security token invalid")
-        val sourceUri = Uri(state.substring(SecurityToken.length))
-        requestToken(code, callbackUri).map { userInfo =>
-          AuthCallback(sourceUri, userInfo)
-        }
-    }
+      case (Some(code), Some(stateParam)) =>
+        val state = extractState(request, stateParam)
 
+        requestToken(code, callbackUri).map { userInfo =>
+          AuthCallback(state.sourceUri, userInfo)
+        }
+      case _ =>
+        throw new IllegalArgumentException("Missing parameter 'code' or 'state'.")
+    }
   }
 
   private def requestToken(code: String, callbackUri: Uri): Future[UserInfo] = {
@@ -92,10 +95,51 @@ trait GoogleAuth {
 
     pipeline(Get(Uri("https://www.googleapis.com/oauth2/v2/userinfo"))).map { json =>
       import Json4sProtocol._
-      val name = (json \ "name").extractOpt[String]
-      val email = (json \ "email").extractOpt[String]
-      val locale = (json \ "locale").extractOpt[String]
-      UserInfo(name, email, locale)
+      json.extract[UserInfo]
+    }
+  }
+}
+
+/**
+ * Handles the state of the source URI when the user is authenticating. Before authentication a cookie is
+ * created which contains a key. That key is used to encrypt the source URI that the user tried to access which is sent
+ * to the 3rd party authenticator. The source URI is decrypted on the callback.
+ *
+ * The reason why the source URI is sent to the authenticator is so that if a user tries to access multiple URIs before
+ * authenticating the request should go to the requested destination after authentication.
+ *
+ * The cookie will not be created if one already exists with the expected content length.
+ */
+trait StateOps {
+  def stateCookieName: String
+
+  case class State(cookie: HttpCookie, message: String) {
+    def sourceUri = {
+      val uri = AES.decrypt(message, cookie.content.fromBase64)
+      Uri(uri)
+    }
+  }
+
+  def findStateCookie(request: HttpRequest) = request.cookies.find(_.name == stateCookieName)
+
+  def generateState(sourceUri: Uri, request: HttpRequest) = {
+    val (cookie, key) = findStateCookie(request) match {
+      case Some(cookie) if cookie.content.length == 24 =>
+        cookie -> cookie.content.fromBase64
+      case _ =>
+        val key = AES.generateKey(128)
+        HttpCookie(stateCookieName, key.toBase64String) -> key
+    }
+    val state = AES.encrypt(sourceUri.toString(), key)
+    State(cookie, state)
+  }
+
+  def extractState(request: HttpRequest, state: String) = {
+    findStateCookie(request) match {
+      case Some(cookie) =>
+        State(cookie, state)
+      case None =>
+        throw new IllegalArgumentException(s"Missing cookie '$stateCookieName'")
     }
   }
 }

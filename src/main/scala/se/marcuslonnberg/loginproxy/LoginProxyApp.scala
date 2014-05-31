@@ -13,6 +13,7 @@ import scala.concurrent.duration._
 
 object LoginProxyApp extends App {
   implicit val system = ActorSystem("proxy")
+  sys.addShutdownHook(system.shutdown())
 
   val conf = ConfigFactory.load()
   val serverInterface = conf.as[String]("server.interface")
@@ -25,6 +26,7 @@ object LoginProxyApp extends App {
   val connector = system.actorOf(ConnectActor.props(proxy, auth), "connector")
 
   import system.dispatcher
+
   system.scheduler.scheduleOnce(1.seconds) {
     val proxyApi = system.actorSelection(proxy.path / "api-routing" / "api")
     proxyApi ! AddProxy(ProxyConf(Host("bbc.local"), Uri("http://www.bbc.co.uk")))

@@ -28,7 +28,9 @@ object Dependencies {
 
   val NScala = Seq("com.github.nscala-time" %% "nscala-time" % "1.0.0")
 
-  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala
+  val CommonsCodec = Seq("commons-codec" % "commons-codec" % "1.9")
+
+  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala ++ CommonsCodec
 
   object Resolvers {
     val Spray = Seq(

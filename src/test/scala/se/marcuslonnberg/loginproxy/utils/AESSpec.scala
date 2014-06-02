@@ -4,7 +4,7 @@ import org.scalatest.{Matchers, FreeSpec}
 
 class AESSpec extends FreeSpec with Matchers {
   "Encrypt and decrypt should " - {
-    val message = "Apa"
+    val message = "Secret message"
     val key = AES.generateKey(128)
 
     val encryptedMessage = AES.encrypt(message, key)

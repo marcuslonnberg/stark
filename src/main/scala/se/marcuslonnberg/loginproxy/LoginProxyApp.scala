@@ -6,18 +6,18 @@ import spray.can.Http
 import spray.http.Uri
 import se.marcuslonnberg.loginproxy.proxy.{ProxyActor, Host, ProxyConf}
 import se.marcuslonnberg.loginproxy.auth.AuthActor
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
 import net.ceedubs.ficus.FicusConfig._
 import se.marcuslonnberg.loginproxy.api.ProxyApiActor.AddProxy
 import scala.concurrent.duration._
+import spray.can.server.ServerSettings
+import scala.collection.convert.wrapAsScala._
 
-object LoginProxyApp extends App {
+object LoginProxyApp extends App with SSLSupport {
   implicit val system = ActorSystem("proxy")
   sys.addShutdownHook(system.shutdown())
 
   val conf = ConfigFactory.load()
-  val serverInterface = conf.as[String]("server.interface")
-  val serverPort = conf.as[Int]("server.port")
 
   val apiHost = Uri.Host(conf.as[String]("server.apiHost"))
   val proxy = system.actorOf(ProxyActor.props(apiHost), "proxy")
@@ -33,5 +33,28 @@ object LoginProxyApp extends App {
     proxyApi ! AddProxy(ProxyConf(Host("cnn.local"), Uri("http://edition.cnn.com")))
   }
 
-  IO(Http) ! Http.Bind(connector, interface = serverInterface, port = serverPort)
+  private val bindings = conf.getObjectList("server.bindings")
+  println(s"Found ${bindings.length} bindings in config")
+  bindings.foreach(b => bind(b.toConfig))
+
+  def bind(bindConfig: Config) = {
+    val bindInterface = bindConfig.getAs[String]("interface").getOrElse(conf.as[String]("server.interface"))
+    val port = bindConfig.as[Int]("port")
+    val ssl = bindConfig.getAs[Boolean]("ssl").getOrElse(false)
+
+    val bind = {
+      val bind = Http.Bind(connector, interface = bindInterface, port = port)
+      if (ssl) {
+        val certFile = bindConfig.as[String]("cert-file")
+        val privateKeyFile = bindConfig.as[String]("private-key-file")
+        implicit val sslContext = createSSLContext(certFile, privateKeyFile)
+
+        bind.copy(settings = Some(ServerSettings(system).copy(sslEncryption = ssl)))
+      } else {
+        bind
+      }
+    }
+
+    IO(Http) ! bind
+  }
 }

@@ -1,19 +1,19 @@
-package se.marcuslonnberg.loginproxy
+package se.marcuslonnberg.stark
 
 import akka.actor.ActorSystem
 import akka.io.IO
 import spray.can.Http
 import spray.http.Uri
-import se.marcuslonnberg.loginproxy.proxy.{ProxyActor, Host, ProxyConf}
-import se.marcuslonnberg.loginproxy.auth.AuthActor
+import se.marcuslonnberg.stark.proxy.{ProxyActor, Host, ProxyConf}
+import se.marcuslonnberg.stark.auth.AuthActor
 import com.typesafe.config.{Config, ConfigFactory}
 import net.ceedubs.ficus.FicusConfig._
-import se.marcuslonnberg.loginproxy.api.ProxyApiActor.AddProxy
+import se.marcuslonnberg.stark.api.ProxyApiActor.AddProxy
 import scala.concurrent.duration._
 import spray.can.server.ServerSettings
 import scala.collection.convert.wrapAsScala._
 
-object LoginProxyApp extends App with SSLSupport {
+object StarkProxyApp extends App with SSLSupport {
   implicit val system = ActorSystem("proxy")
   sys.addShutdownHook(system.shutdown())
 

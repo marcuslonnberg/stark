@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy.proxy
+package se.marcuslonnberg.stark.proxy
 
 import spray.http.Uri
 import org.json4s.JsonAST.JObject

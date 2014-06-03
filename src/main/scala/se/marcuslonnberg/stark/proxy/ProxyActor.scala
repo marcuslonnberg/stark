@@ -1,11 +1,11 @@
-package se.marcuslonnberg.loginproxy.proxy
+package se.marcuslonnberg.stark.proxy
 
 import akka.actor.{Props, Actor, ActorLogging}
 import spray.http._
 import spray.http.HttpRequest
-import se.marcuslonnberg.loginproxy.proxy.ProxyActor.{SetProxies, ProxyRequest}
-import se.marcuslonnberg.loginproxy.auth.AuthActor.UserInfo
-import se.marcuslonnberg.loginproxy.api.ApiActor
+import se.marcuslonnberg.stark.proxy.ProxyActor.{SetProxies, ProxyRequest}
+import se.marcuslonnberg.stark.auth.AuthActor.UserInfo
+import se.marcuslonnberg.stark.api.ApiActor
 
 object ProxyActor {
 

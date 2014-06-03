@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy.auth
+package se.marcuslonnberg.stark.auth
 
 import spray.http.Uri.Query
 import spray.http._
@@ -10,12 +10,12 @@ import scala.Some
 import scala.concurrent.{ExecutionContext, Future}
 import org.json4s._
 import org.json4s.JsonAST._
-import se.marcuslonnberg.loginproxy.Json4sProtocol
+import se.marcuslonnberg.stark.Json4sProtocol
 import akka.actor.ActorRefFactory
 import spray.http.HttpHeaders.{Location, `Set-Cookie`}
-import se.marcuslonnberg.loginproxy.auth.AuthActor.{AuthCallback, UserInfo}
-import se.marcuslonnberg.loginproxy.utils.AES
-import se.marcuslonnberg.loginproxy.utils.Implicits._
+import se.marcuslonnberg.stark.auth.AuthActor.{AuthCallback, UserInfo}
+import se.marcuslonnberg.stark.utils.AES
+import se.marcuslonnberg.stark.utils.Implicits._
 
 trait GoogleAuth extends StateOps {
 

@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy.utils
+package se.marcuslonnberg.stark.utils
 
 import javax.crypto.{KeyGenerator, Cipher}
 import javax.crypto.spec.SecretKeySpec

@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy.utils
+package se.marcuslonnberg.stark.utils
 
 import org.scalatest.{Matchers, FreeSpec}
 

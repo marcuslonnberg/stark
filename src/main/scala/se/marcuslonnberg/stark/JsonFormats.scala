@@ -1,9 +1,9 @@
-package se.marcuslonnberg.loginproxy
+package se.marcuslonnberg.stark
 
 import org.json4s.{FieldSerializer, CustomSerializer}
 import spray.http.Uri
 import org.json4s.JsonAST._
-import se.marcuslonnberg.loginproxy.proxy.{Header, ProxyConf}
+import se.marcuslonnberg.stark.proxy.{Header, ProxyConf}
 
 object JsonFormats {
   implicit val uriFormat = new CustomSerializer[Uri](format => ( {

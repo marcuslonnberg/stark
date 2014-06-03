@@ -1,9 +1,9 @@
-package se.marcuslonnberg.loginproxy.api
+package se.marcuslonnberg.stark.api
 
 import akka.actor.{ActorLogging, Actor, Props, ActorRef}
-import se.marcuslonnberg.loginproxy.proxy.{Host, ProxyConf}
-import se.marcuslonnberg.loginproxy.proxy.ProxyActor.SetProxies
-import se.marcuslonnberg.loginproxy.api.ProxyApiActor._
+import se.marcuslonnberg.stark.proxy.{Host, ProxyConf}
+import se.marcuslonnberg.stark.proxy.ProxyActor.SetProxies
+import se.marcuslonnberg.stark.api.ProxyApiActor._
 
 object ProxyApiActor {
   def props(proxyActor: ActorRef) = Props(classOf[ProxyApiActor], proxyActor)

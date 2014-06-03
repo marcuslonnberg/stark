@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy
+package se.marcuslonnberg.stark
 
 import javax.net.ssl.{TrustManagerFactory, KeyManagerFactory, SSLContext}
 import spray.io.{SSLContextProvider, ServerSSLEngineProvider}
@@ -7,7 +7,7 @@ import java.security._
 import java.security.cert.{Certificate, CertificateFactory}
 import java.security.spec.PKCS8EncodedKeySpec
 import scala.io.Source
-import se.marcuslonnberg.loginproxy.utils.Implicits._
+import se.marcuslonnberg.stark.utils.Implicits._
 
 trait SSLSupport {
   val algorithm = "SunX509"

@@ -1,12 +1,12 @@
-package se.marcuslonnberg.loginproxy.api
+package se.marcuslonnberg.stark.api
 
 import spray.routing.HttpService
 import akka.actor._
 import akka.pattern.ask
 import scala.concurrent.duration._
-import se.marcuslonnberg.loginproxy.Json4sProtocol
-import se.marcuslonnberg.loginproxy.api.ProxyApiActor._
-import se.marcuslonnberg.loginproxy.proxy.{Host, ProxyConf}
+import se.marcuslonnberg.stark.Json4sProtocol
+import se.marcuslonnberg.stark.api.ProxyApiActor._
+import se.marcuslonnberg.stark.proxy.{Host, ProxyConf}
 import akka.util.Timeout
 import org.json4s.Extraction
 import scala.concurrent.ExecutionContext

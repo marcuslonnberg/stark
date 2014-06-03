@@ -1,10 +1,10 @@
-package se.marcuslonnberg.loginproxy.auth
+package se.marcuslonnberg.stark.auth
 
 import akka.actor.{Props, Actor, ActorLogging}
 import spray.http._
 import spray.http.HttpRequest
 import spray.http.HttpResponse
-import se.marcuslonnberg.loginproxy.auth.AuthActor._
+import se.marcuslonnberg.stark.auth.AuthActor._
 import scala.Some
 import scala.util.{Random, Failure, Success}
 import com.typesafe.config.ConfigFactory

@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy.proxy
+package se.marcuslonnberg.stark.proxy
 
 import akka.actor.{ActorLogging, Actor, Props, ActorRef}
 import akka.io.IO
@@ -8,7 +8,7 @@ import spray.http.HttpRequest
 import spray.http.HttpHeaders.RawHeader
 import scala.Some
 import spray.http.HttpResponse
-import se.marcuslonnberg.loginproxy.proxy.ProxyActor.ProxyRequest
+import se.marcuslonnberg.stark.proxy.ProxyActor.ProxyRequest
 
 object ProxyRequestActor {
   def props(proxyRequest: ProxyRequest, proxies: List[ProxyConf], receiver: ActorRef) =

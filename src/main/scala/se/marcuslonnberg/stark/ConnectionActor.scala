@@ -1,4 +1,4 @@
-package se.marcuslonnberg.loginproxy
+package se.marcuslonnberg.stark
 
 import akka.actor.{Props, ActorRef, ActorLogging, Actor}
 import spray.http.HttpRequest

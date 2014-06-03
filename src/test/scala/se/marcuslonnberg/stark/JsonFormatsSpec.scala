@@ -1,11 +1,11 @@
-package se.marcuslonnberg.loginproxy
+package se.marcuslonnberg.stark
 
 import org.scalatest.{Inside, Matchers, FreeSpec}
 import org.json4s.JsonDSL._
 import spray.http.Uri
 import org.json4s.Extraction
 import org.json4s.native.Serialization._
-import se.marcuslonnberg.loginproxy.proxy.{Header, Host, ProxyConf}
+import se.marcuslonnberg.stark.proxy.{Header, Host, ProxyConf}
 
 class JsonFormatsSpec extends FreeSpec with Matchers with Inside {
   implicit val formats = Json4sProtocol.json4sFormats

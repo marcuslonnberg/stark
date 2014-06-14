@@ -42,7 +42,7 @@ class AuthActor extends Actor with ActorLogging {
   val CookieParameter = "cookie"
   val SourceParameter = "source"
 
-  override def receive = state(Map(), Map())
+  override def receive = state(Map.empty, Map.empty)
 
   import context.dispatcher
 
@@ -73,7 +73,7 @@ class AuthActor extends Actor with ActorLogging {
 
       authInfoOption match {
         case Some(authInfo) =>
-          log.debug("Auth info", authInfo)
+          log.debug("Auth info: {}", authInfo)
 
           request.uri.query.get(SourceParameter) match {
             case Some(source) =>
@@ -119,7 +119,7 @@ class AuthActor extends Actor with ActorLogging {
 
       authInfoOption match {
         case Some(authInfo) =>
-          log.debug("Auth info", authInfo)
+          log.debug("Auth info: {}", authInfo)
           sender ! LoggedIn(authInfo.user)
         case _ =>
           val redirectionUri = CheckUri.withQuery((SourceParameter -> request.uri.toString()) +: CheckUri.query)

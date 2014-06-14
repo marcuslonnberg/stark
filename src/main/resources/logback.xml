@@ -1,6 +1,6 @@
 <configuration>
-    <conversionRule conversionWord="levelcolor" converterClass="se.marcuslonnberg.stark.logging.LevelColoring2" />
-    <conversionRule conversionWord="msgcolor" converterClass="se.marcuslonnberg.stark.logging.MessageColoring2" />
+    <conversionRule conversionWord="levelcolor" converterClass="se.marcuslonnberg.stark.logging.LevelColoring" />
+    <conversionRule conversionWord="msgcolor" converterClass="se.marcuslonnberg.stark.logging.MessageColoring" />
 
     <property name="defaultPattern"
               value="%date{ISO8601} %levelcolor(%-5level) [%logger{36}] [%cyan(%X{akkaSource})] %msgcolor(%msg) %n"/>

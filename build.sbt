@@ -10,3 +10,4 @@ libraryDependencies ++= Dependencies.all
 
 resolvers ++= Dependencies.Resolvers.all
 
+Revolver.settings

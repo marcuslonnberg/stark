@@ -1,15 +1,13 @@
 package se.marcuslonnberg.stark.auth
 
-import akka.actor.{Props, Actor, ActorLogging}
-import spray.http._
-import spray.http.HttpRequest
-import spray.http.HttpResponse
-import se.marcuslonnberg.stark.auth.AuthActor._
-import scala.Some
-import scala.util.{Random, Failure, Success}
+import akka.actor.{Actor, ActorLogging, Props}
 import com.typesafe.config.ConfigFactory
 import net.ceedubs.ficus.FicusConfig._
+import se.marcuslonnberg.stark.auth.AuthActor._
+import spray.http._
+
 import scala.concurrent.duration._
+import scala.util.Random
 
 object AuthActor {
   def props(): Props = Props(classOf[AuthActor])
@@ -44,13 +42,7 @@ class AuthActor extends Actor with ActorLogging {
 
   override def receive = state(Map.empty, Map.empty)
 
-  import context.dispatcher
-
-  val Google = new GoogleAuth {
-    override implicit def actorRefFactory = context
-
-    override implicit def executionContext = context.dispatcher
-  }
+  val authProvider: AuthProvider = GoogleAuthProvider
 
   case class StoreLogin(requestUri: Uri, userInfo: UserInfo)
 
@@ -73,7 +65,7 @@ class AuthActor extends Actor with ActorLogging {
 
       authInfoOption match {
         case Some(authInfo) =>
-          log.debug("Auth info: {}", authInfo)
+          log.debug("Check for authenticated user: {}", authInfo)
 
           request.uri.query.get(SourceParameter) match {
             case Some(source) =>
@@ -92,23 +84,24 @@ class AuthActor extends Actor with ActorLogging {
           }
         case _ =>
           if (request.method == HttpMethods.GET) {
-            sender ! AuthResponse(Google.initialRequest(request, CallbackUri, request.uri))
+            val redirect = authProvider.redirectBrowser(request, CallbackUri, request.uri)
+            log.debug("Sending redirect response: {}", redirect)
+            sender ! AuthResponse(redirect)
           } else {
+            log.debug("Received a {} request, must be GET for log in", request.method)
             sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Log in with a GET request"))
           }
       }
     case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isCallbackUri(uri) =>
-      val sender = context.sender()
-      Google.callback(request, CallbackUri).onComplete {
-        case Success(AuthCallback(requestUri, userInfo)) =>
-          if (isAuthorized(userInfo)) {
-            self.tell(StoreLogin(requestUri, userInfo), sender)
-          } else {
-            sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Access denied"))
-          }
-        case Failure(ex) =>
-          log.error(ex, "Error in auth callback")
-          sender ! HttpResponse(StatusCodes.InternalServerError, "Error in auth")
+      val requestActor = context.actorOf(AuthRequestActor.props(authProvider, sender()))
+      requestActor ! AuthProvider.AuthResponse(request, CallbackUri)
+    case AuthCallback(requestUri, userInfo) =>
+      if (isAuthorized(userInfo)) {
+        log.info("User is authorized: {}", userInfo)
+        self.tell(StoreLogin(requestUri, userInfo), sender())
+      } else {
+        log.info("User is not authorized: {}", userInfo)
+        sender() ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Access denied"))
       }
     case request: HttpRequest =>
       val loginCookie = getLoginCookie(request)
@@ -119,7 +112,7 @@ class AuthActor extends Actor with ActorLogging {
 
       authInfoOption match {
         case Some(authInfo) =>
-          log.debug("Auth info: {}", authInfo)
+          log.debug("Authenticated user: {}", authInfo)
           sender ! LoggedIn(authInfo.user)
         case _ =>
           val redirectionUri = CheckUri.withQuery((SourceParameter -> request.uri.toString()) +: CheckUri.query)

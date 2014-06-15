@@ -12,6 +12,12 @@ object JsonFormats {
     case uri: Uri => JString(uri.toString())
   }))
 
+  implicit val uriHostFormat = new CustomSerializer[Uri.Host](format => ( {
+    case json: JString => Uri.Host(json.s)
+  }, {
+    case host: Uri.Host => JString(host.address)
+  }))
+
   implicit val uriPathFormat = new CustomSerializer[Uri.Path](format => ( {
     case json: JString => Uri.Path(json.s)
   }, {

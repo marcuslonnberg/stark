@@ -1,9 +1,10 @@
 package se.marcuslonnberg.stark.api
 
-import akka.actor.{ActorLogging, Actor, Props, ActorRef}
-import se.marcuslonnberg.stark.proxy.{Host, ProxyConf}
-import se.marcuslonnberg.stark.proxy.ProxyActor.SetProxies
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import se.marcuslonnberg.stark.api.ProxyApiActor._
+import se.marcuslonnberg.stark.proxy.ProxiesActor.SetProxies
+import se.marcuslonnberg.stark.proxy.ProxyConf
+import spray.http.Uri
 
 object ProxyApiActor {
   def props(proxyActor: ActorRef) = Props(classOf[ProxyApiActor], proxyActor)
@@ -12,10 +13,10 @@ object ProxyApiActor {
 
   case object GetProxies
 
-  case class GetProxy(host: Host)
-
+  case class GetProxy(host: Uri.Host, path: Uri.Path)
 
   object Responses {
+
     case class AddProxy(proxy: ProxyConf)
 
     case class GetProxies(proxies: List[ProxyConf])
@@ -38,7 +39,8 @@ class ProxyApiActor(proxyActor: ActorRef) extends Actor with ActorLogging {
       proxyActor ! SetProxies(newProxies)
       context.become(state(newProxies))
       sender ! Responses.AddProxy(proxy)
-    case GetProxy(host) =>
-      sender ! Responses.GetProxy(proxies.find(_.host == host))
+    case GetProxy(host, path) =>
+      val proxy = proxies.find(p => p.host == host || p.path == path)
+      sender ! Responses.GetProxy(proxy)
   }
 }

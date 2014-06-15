@@ -1,49 +1,21 @@
 package se.marcuslonnberg.stark
 
-import org.scalatest.{Inside, Matchers, FreeSpec}
-import org.json4s.JsonDSL._
-import spray.http.Uri
 import org.json4s.Extraction
-import org.json4s.native.Serialization._
-import se.marcuslonnberg.stark.proxy.{Header, Host, ProxyConf}
+import org.json4s.JsonDSL._
+import org.scalatest.{FreeSpec, Inside, Matchers}
+import se.marcuslonnberg.stark.proxy.{Header, ProxyConf}
+import spray.http.Uri
 
-class JsonFormatsSpec extends FreeSpec with Matchers with Inside {
-  implicit val formats = Json4sProtocol.json4sFormats
-
+class JsonFormatsSpec extends FreeSpec with Matchers with Inside with JsonSupport {
   "Proxy" - {
     "Basic" - {
-      val json =
-        """{
-          |  "host":{
-          |    "address":"test.local"
-          |  },
-          |  "upstream":"http://test.example.com/xyz",
-          |  "headers":[
-          |    {
-          |      "name":"Authorization",
-          |      "value":"Basic 123"
-          |    }
-          |  ]
-          |}""".stripMargin
-
-      val proxy = ProxyConf(Host("test.local"), Uri("http://test.example.com/xyz"), List(Header("Authorization", "Basic 123")))
-
-      "Deserialize" - {
-        read[ProxyConf](json) shouldEqual proxy
-      }
-
-      "Serialize" - {
-        writePretty(proxy) shouldEqual json
-      }
-    }
-
-    "Extensive" - {
-      val json = ("host" -> ("address" -> "test.local")) ~
+      val json = ("host" -> "test.local") ~
+        ("path" -> "") ~
         ("upstream" -> "http://test.example.com/xyz") ~
         ("headers" ->
           List(("name" -> "Authorization") ~ ("value" -> "Basic 123")))
 
-      val proxy = ProxyConf(Host("test.local"), Uri("http://test.example.com/xyz"), List(Header("Authorization", "Basic 123")))
+      val proxy = ProxyConf(Uri.Host("test.local"), upstream = Uri("http://test.example.com/xyz"), headers = List(Header("Authorization", "Basic 123")))
 
       "Deserialize" - {
         json.extract[ProxyConf] shouldEqual proxy

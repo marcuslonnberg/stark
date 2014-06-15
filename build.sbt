@@ -11,3 +11,5 @@ libraryDependencies ++= Dependencies.all
 resolvers ++= Dependencies.Resolvers.all
 
 Revolver.settings
+
+Revolver.enableDebugging(port = 5005, suspend = false)

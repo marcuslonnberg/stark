@@ -2,15 +2,17 @@ package se.marcuslonnberg.stark
 
 import akka.actor.{Props, ActorRef, ActorLogging, Actor}
 import spray.can.Http
+import spray.http.Uri.Host
 
 object ConnectActor {
-  def props(proxyActor: ActorRef, authActor: ActorRef) = Props(classOf[ConnectActor], proxyActor, authActor)
+  def props(proxiesActor: ActorRef, authActor: ActorRef, apiActor: ActorRef, apiHost: Host) =
+    Props(classOf[ConnectActor], proxiesActor, authActor, apiActor, apiHost)
 }
 
-class ConnectActor(proxyActor: ActorRef, authActor: ActorRef) extends Actor with ActorLogging {
+class ConnectActor(proxiesActor: ActorRef, authActor: ActorRef, apiActor: ActorRef, apiHost: Host) extends Actor with ActorLogging {
   override def receive = {
     case _: Http.Connected =>
-      val proxy = context.actorOf(ConnectionActor.props(proxyActor, authActor))
+      val proxy = context.actorOf(ConnectionActor.props(proxiesActor, authActor, apiActor, apiHost))
       sender ! Http.Register(proxy)
   }
 }

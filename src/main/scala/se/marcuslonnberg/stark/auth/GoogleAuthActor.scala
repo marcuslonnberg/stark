@@ -77,7 +77,7 @@ class GoogleAuthActor(sender: ActorRef) extends Actor with ActorLogging with Sta
 
   def waitForAccessToken(state: State): Receive = {
     case HttpResponse(StatusCodes.OK, entity, _, _) =>
-      import se.marcuslonnberg.stark.Json4sProtocol._
+      import se.marcuslonnberg.stark.JsonProtocol._
       val accessToken = entity.as[JObject].right.toOption
         .flatMap(obj => (obj \ "access_token").extractOpt[String])
         .getOrElse(sys.error("Could not parse access token"))
@@ -91,7 +91,7 @@ class GoogleAuthActor(sender: ActorRef) extends Actor with ActorLogging with Sta
 
   def waitForUserInfo(state: State): Receive = {
     case HttpResponse(_, entity, _, _) =>
-      import se.marcuslonnberg.stark.Json4sProtocol._
+      import se.marcuslonnberg.stark.JsonProtocol._
       val userInfoResponse = entity.as[JObject].right.toOption.flatMap { obj =>
         obj.extractOpt[UserInfoResponse]
       }

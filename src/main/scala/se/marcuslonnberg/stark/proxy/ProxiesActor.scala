@@ -9,7 +9,7 @@ object ProxiesActor {
 
   def props(apiHost: Uri.Host) = Props(classOf[ProxiesActor], apiHost)
 
-  case class ProxyRequest(request: HttpRequest, userInfo: UserInfo, cookie: Option[HttpCookie])
+  case class ProxyRequest(request: HttpRequest, userInfo: Option[UserInfo] = None, cookie: Option[HttpCookie] = None)
 
   case class SetProxies(proxies: List[ProxyConf])
 

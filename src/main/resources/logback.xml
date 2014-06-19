@@ -27,6 +27,7 @@
     <logger name="akka" level="INFO" />
     <logger name="spray" level="INFO" />
     <logger name="spray.can" level="ERROR" />
+    <logger name="redis" level="WARN" />
 
     <root level="DEBUG">
         <appender-ref ref="STDOUT"/>

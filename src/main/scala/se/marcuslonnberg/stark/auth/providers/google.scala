@@ -1,4 +1,4 @@
-package se.marcuslonnberg.stark.auth
+package se.marcuslonnberg.stark.auth.providers
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.IO
@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigFactory
 import net.ceedubs.ficus.Ficus._
 import org.json4s._
 import se.marcuslonnberg.stark.auth.AuthActor.{AuthCallback, UserInfo}
-import se.marcuslonnberg.stark.auth.AuthProvider._
+import AuthProvider._
 import spray.can.Http
 import spray.http.HttpHeaders.{Location, `Set-Cookie`}
 import spray.http.Uri.Query
@@ -16,9 +16,11 @@ import spray.httpx.unmarshalling._
 
 object GoogleAuthProvider extends StateOps with AuthProvider {
   val google = ConfigFactory.load().getConfig("auth.google")
-  val clientId = google.as[String]("clientId")
-  val clientSecret = google.as[String]("clientSecret")
-  val stateCookieName = google.as[String]("stateCookieName")
+  val clientId = google.as[String]("client-id")
+  val clientSecret = google.as[String]("client-secret")
+  val stateCookieName = google.as[String]("state-cookie-name")
+
+  def actorName = "google"
 
   def redirectBrowser(request: HttpRequest, callbackUri: Uri, sourceUri: Uri) = {
     val state = generateState(sourceUri, request)
@@ -56,7 +58,7 @@ object GoogleAuthProvider extends StateOps with AuthProvider {
 class GoogleAuthActor(sender: ActorRef) extends Actor with ActorLogging with StateOps {
 
   import context.system
-  import se.marcuslonnberg.stark.auth.GoogleAuthProvider._
+  import GoogleAuthProvider._
 
   def stateCookieName = GoogleAuthProvider.stateCookieName
 

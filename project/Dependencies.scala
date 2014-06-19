@@ -15,7 +15,11 @@ object Dependencies {
       "io.spray" %% "spray-testkit" % version)
   }
 
-  val Json4s = Seq("org.json4s" %% "json4s-native" % "3.2.9")
+  val Json4s = {
+    val version = "3.2.10"
+    Seq("org.json4s" %% "json4s-native" % version,
+      "org.json4s" %% "json4s-ext" % version)
+  }
 
   val ScalaTest = Seq("org.scalatest" %% "scalatest" % "2.1.7" % "test")
 
@@ -30,14 +34,16 @@ object Dependencies {
 
   val CommonsCodec = Seq("commons-codec" % "commons-codec" % "1.9")
 
-  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala ++ CommonsCodec
+  val RedisScala = Seq("com.etaty.rediscala" %% "rediscala" % "1.3.1")
+
+  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala ++ CommonsCodec ++ RedisScala
 
   object Resolvers {
-    val Spray = Seq(
-      "spray repo" at "http://repo.spray.io/"
-    )
+    val Spray = "spray repo" at "http://repo.spray.io/"
 
-    val all = Spray
+    val RedisScala = "rediscala" at "http://dl.bintray.com/etaty/maven"
+
+    val all = Spray :: RedisScala :: Nil
   }
 
 }

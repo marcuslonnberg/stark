@@ -15,6 +15,8 @@ object ProxyConnectionActor {
 }
 
 class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging with RequestTransformer {
+  val config = ConfigFactory.load()
+  val cookieName = config.getString("auth.cookie-name")
 
   import context._
 
@@ -43,7 +45,6 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
   def connecting(transformedRequest: HttpRequest, receiver: ActorRef): Receive = {
     case Connected(_, _) =>
       log.debug("Connected")
-      log.debug("{}", transformedRequest.protocol)
       io ! transformedRequest
       context.become(response(receiver))
     case x =>
@@ -66,6 +67,7 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
       context.become(request)
     case close: ConnectionClosed =>
       log.debug("Close")
+      context.become(firstRequest)
     case x =>
       log.debug("Other: {}", x)
   }
@@ -80,8 +82,7 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
 }
 
 trait RequestTransformer {
-  val config = ConfigFactory.load()
-  val cookieName = config.getString("auth.cookieName")
+  def cookieName: String
 
   def transformRequest(proxyRequest: ProxyRequest, conf: ProxyConf): HttpRequest = {
     val requestUri = proxyRequest.request.uri

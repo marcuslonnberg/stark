@@ -1,19 +1,20 @@
-package se.marcuslonnberg.stark.auth
+package se.marcuslonnberg.stark.auth.providers
 
 import akka.actor.SupervisorStrategy.Stop
 import akka.actor._
 import se.marcuslonnberg.stark.auth.AuthActor.AuthCallback
-import se.marcuslonnberg.stark.auth.AuthProvider.AuthResponse
-import spray.http.{HttpEntity, StatusCodes, HttpResponse}
+import se.marcuslonnberg.stark.auth.providers.AuthProvider.AuthResponse
+import spray.http.{HttpEntity, HttpResponse, StatusCodes}
+
 import scala.concurrent.duration._
 
-object AuthRequestActor {
-  def props(authProvider: AuthProvider, sender: ActorRef) = Props(classOf[AuthRequestActor], authProvider, sender)
+object AuthProviderRequestActor {
+  def props(authProvider: AuthProvider, sender: ActorRef) = Props(classOf[AuthProviderRequestActor], authProvider, sender)
 }
 
-class AuthRequestActor(authProvider: AuthProvider, sender: ActorRef) extends Actor {
+class AuthProviderRequestActor(authProvider: AuthProvider, sender: ActorRef) extends Actor {
 
-  val provider = context.actorOf(authProvider.props(sender))
+  val provider = context.actorOf(authProvider.props(sender), authProvider.actorName)
 
   context.setReceiveTimeout(30.seconds)
 

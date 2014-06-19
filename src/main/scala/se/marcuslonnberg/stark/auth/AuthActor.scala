@@ -1,166 +1,309 @@
 package se.marcuslonnberg.stark.auth
 
-import akka.actor.{Actor, ActorLogging, Props}
-import com.typesafe.config.ConfigFactory
-import net.ceedubs.ficus.FicusConfig._
-import se.marcuslonnberg.stark.auth.AuthActor._
-import spray.http._
+import java.security.SecureRandom
 
-import scala.concurrent.duration._
-import scala.util.Random
+import akka.actor.{Actor, ActorLogging, Props}
+import akka.pattern.pipe
+import com.typesafe.config.ConfigFactory
+import net.ceedubs.ficus.Ficus._
+import se.marcuslonnberg.stark.auth.AuthActor._
+import se.marcuslonnberg.stark.auth.providers.{AuthProviderRequestActor, AuthProvider, GoogleAuthProvider}
+import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
+import se.marcuslonnberg.stark.utils.Implicits._
+import spray.http.StatusCodes.{Redirection, TemporaryRedirect}
+import spray.http.{DateTime => SprayDateTime, _}
+import com.github.nscala_time.time.Imports._
+import se.marcuslonnberg.stark.utils._
+
+import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.util.matching.Regex
 
 object AuthActor {
-  def props(): Props = Props(classOf[AuthActor])
 
-  case class Callback(callbackRequest: HttpRequest)
+  case class AuthInfo(user: UserInfo, expires: Option[DateTime])
+
+  case object NotAuthenticated
+
+  sealed trait Authenticated
+
+  case object AuthenticatedHeader extends Authenticated
+
+  case class AuthenticatedSession(userInfo: UserInfo, cookie: Option[HttpCookie] = None) extends Authenticated
 
   case class UserInfo(name: Option[String],
                       email: Option[String],
                       locale: Option[String])
 
-  case class AuthInfo(user: UserInfo, expires: Option[DateTime])
-
   case class AuthResponse(response: HttpResponse)
-
-  case class LoggedIn(userInfo: UserInfo, cookie: Option[HttpCookie] = None)
 
   case class AuthCallback(requestUri: Uri, userInfo: UserInfo)
 
+  def props() = Props[AuthActor]()
+
 }
 
-class AuthActor extends Actor with ActorLogging {
+class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth with SecureRandomIdGenerator with PathRequests with RedisAuthStore {
+
+  import context.dispatcher
+
+  implicit lazy val system = context.system
   val config = ConfigFactory.load().getConfig("auth")
 
-  val CookieName = config.as[String]("cookieName")
-  val CallbackUri = Uri(config.as[String]("callbackUrl"))
-  val CheckUri = Uri(config.as[String]("checkUrl"))
-  val SetCookiePath = Uri.Path(config.as[String]("setCookiePath"))
-  val AllowedEmails = config.as[Option[String]]("authorizedEmailPattern").map(_.r)
-
-  val CookieParameter = "cookie"
-  val SourceParameter = "source"
-
-  override def receive = state(Map.empty, Map.empty)
-
-  val authProvider: AuthProvider = GoogleAuthProvider
-
-  case class StoreLogin(requestUri: Uri, userInfo: UserInfo)
-
-  def state(cookieAuths: Map[String, AuthInfo], headerAuths: Map[String, AuthInfo]): Receive = {
-    case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isSetCookieUri(uri) =>
-      (request.uri.query.get(SourceParameter), request.uri.query.get(CookieParameter)) match {
-        case (Some(source), Some(cookieValue)) =>
-          // Set cookie on source domain and redirect to source url
-          sender ! AuthResponse(RedirectSetCookie(Uri(source), cookieValue))
-        case _ =>
-          val response = HttpResponse(StatusCodes.BadRequest, s"Missing parameter '$CookieParameter' or '$SourceParameter'")
-          sender ! AuthResponse(response)
-      }
-    case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isCheckUri(uri) =>
-      val loginCookie = getLoginCookie(request)
-
-      val authInfoOption = loginCookie.flatMap { cookie =>
-        cookieAuths.get(cookie.content)
-      }
-
-      authInfoOption match {
-        case Some(authInfo) =>
-          log.debug("Check for authenticated user: {}", authInfo)
-
-          request.uri.query.get(SourceParameter) match {
-            case Some(source) =>
-              val sourceUri = Uri(source)
-              val redirectionUri = sourceUri.withPath(SetCookiePath)
-                .withQuery(SourceParameter -> source, CookieParameter -> loginCookie.get.content) // TODO: propertly get the cookie
-            val redirect = HttpResponse(
-                status = StatusCodes.TemporaryRedirect,
-                headers = HttpHeaders.Location(redirectionUri) :: Nil)
-              sender ! AuthResponse(redirect)
-            case None =>
-              val response = HttpResponse(
-                status = StatusCodes.BadRequest,
-                entity = s"Missing '$SourceParameter' parameter")
-              sender ! AuthResponse(response)
-          }
-        case _ =>
-          if (request.method == HttpMethods.GET) {
-            val redirect = authProvider.redirectBrowser(request, CallbackUri, request.uri)
-            log.debug("Sending redirect response: {}", redirect)
-            sender ! AuthResponse(redirect)
-          } else {
-            log.debug("Received a {} request, must be GET for log in", request.method)
-            sender ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Log in with a GET request"))
-          }
-      }
-    case request@HttpRequest(HttpMethods.GET, uri, _, _, _) if isCallbackUri(uri) =>
-      val requestActor = context.actorOf(AuthRequestActor.props(authProvider, sender()))
-      requestActor ! AuthProvider.AuthResponse(request, CallbackUri)
-    case AuthCallback(requestUri, userInfo) =>
-      if (isAuthorized(userInfo)) {
-        log.info("User is authorized: {}", userInfo)
-        self.tell(StoreLogin(requestUri, userInfo), sender())
-      } else {
-        log.info("User is not authorized: {}", userInfo)
-        sender() ! AuthResponse(HttpResponse(StatusCodes.Unauthorized, "Access denied"))
-      }
-    case request: HttpRequest =>
-      val loginCookie = getLoginCookie(request)
-
-      val authInfoOption = loginCookie.flatMap { cookie =>
-        cookieAuths.get(cookie.content)
-      }
-
-      authInfoOption match {
-        case Some(authInfo) =>
-          log.debug("Authenticated user: {}", authInfo)
-          sender ! LoggedIn(authInfo.user)
-        case _ =>
-          val redirectionUri = CheckUri.withQuery((SourceParameter -> request.uri.toString()) +: CheckUri.query)
-          val redirect = HttpResponse(
-            status = StatusCodes.TemporaryRedirect,
-            headers = HttpHeaders.Location(redirectionUri) :: Nil)
-
-          sender ! AuthResponse(redirect)
-      }
-    case StoreLogin(requestUri, userInfo) =>
-      val code = Random.nextLong().toString
-      val newCookieAuths = cookieAuths + (code -> AuthInfo(userInfo, expires = None))
-      context.become(state(newCookieAuths, headerAuths))
-
-      log.info("Storing login '{}' with userInfo: {}", code, userInfo)
-
-      // Set cookie on login domain and redirect to source URI
-      sender ! AuthResponse(RedirectSetCookie(requestUri, code))
-  }
-
-  def isAuthorized(userInfo: UserInfo) = {
-    (AllowedEmails, userInfo.email) match {
-      case (Some(allowedEmails), Some(email))
-        if allowedEmails.findFirstIn(email).isDefined =>
-        true
-      case (Some(_), _) => false
-      case _ => true
+  val authCookieName: String = config.as[String]("cookie-name")
+  val authHeaderName: String = config.as[String]("header-name")
+  val callbackUri: Uri = Uri(config.as[String]("callback-uri"))
+  val checkUriBase: Uri = Uri(config.as[String]("check-uri"))
+  val setCookiePath: Uri.Path = Uri.Path(config.as[String]("set-cookie-path"))
+  val cookieParameter: String = config.as[String]("cookie-parameter")
+  val sourceUriParameter: String = config.as[String]("source-uri-parameter")
+  val allowedEmailsRegex: Option[Regex] = config.as[Option[String]]("allowed-emails-regex").map(_.r)
+  val sessionExpiration: Duration = config.as[Option[FiniteDuration]]("session-expiration").getOrElse(Duration.Inf)
+  val authProvider: AuthProvider = {
+    config.as[String]("provider") match {
+      case "google" => GoogleAuthProvider
+      case provider => sys.error(s"Can't resolve provider '$provider'")
     }
   }
 
-  def RedirectSetCookie(redirectionUri: Uri, cookieValue: String) = {
-    val cookie = HttpCookie(CookieName, cookieValue, expires = Some(DateTime.now + 30.days.toMillis), path = Some("/"))
-    HttpResponse(
-      status = StatusCodes.SeeOther,
-      headers = HttpHeaders.Location(redirectionUri) :: HttpHeaders.`Set-Cookie`(cookie) :: Nil)
+  def checkUri(source: Uri) = checkUriBase.withQuery(sourceUriParameter -> source.toString())
+
+  def receive = authRequest orElse regularRequest
+
+  def regularRequest: Receive = {
+    case request: HttpRequest =>
+      getAuthHeader(request) match {
+        case Some(header) =>
+          log.debug("Found auth header: {}", header)
+          authorizedHeader(header).map {
+            case true => AuthenticatedHeader
+            case false => NotAuthenticated
+          } pipeTo self
+          context.become(checkAuthenticated(request)) // TODO header?
+        case None =>
+          getAuthCookie(request) match {
+            case Success(cookie) =>
+              log.debug("Found auth cookie: {}", cookie)
+              getSession(cookie.content) pipeTo self
+              context.become(checkAuthenticated(request))
+            case Failure(_) =>
+              log.debug("No cookie or header in request, making check request")
+              val redirect = redirectionResponse(TemporaryRedirect, checkUri(request.uri))
+              context.parent ! AuthResponse(redirect)
+          }
+      }
   }
 
-  def getLoginCookie(request: HttpRequest) = request.cookies.find(_.name == CookieName)
+  def authRequest: Receive = {
+    case request: HttpRequest if isCallbackRequest(request) =>
+      log.debug("Callback request: {}", request.uri)
+      val requestActor = context.actorOf(AuthProviderRequestActor.props(authProvider, sender()), "provider")
+      requestActor ! AuthProvider.AuthResponse(request, callbackUri)
+      context.become(authProviderResponse(request))
+
+    case request: HttpRequest if isSetCookieRequest(request) =>
+      log.debug("Set cookie request: {}", request.uri)
+      getSetCookieInfo(request) match {
+        case Success(SetCookieInfo(cookie, uri)) =>
+          val redirect = redirectionResponse(TemporaryRedirect, uri) + setAuthCookieHeader(cookie, None)
+          context.parent ! AuthResponse(redirect)
+        case Failure(message) =>
+          val response = unauthorizedResponse(message)
+          context.parent ! AuthResponse(response)
+      }
+
+    case request: HttpRequest if isCheckRequest(request) =>
+      log.debug("Check request: {}", request.uri)
+      getCheckRequestInfo(request) match {
+        case Success(CheckRequestInfo(Some(cookie), uri)) =>
+          getSession(cookie.content) pipeTo self
+          context.become(checkCookie(request, uri, cookie))
+        case Success(CheckRequestInfo(None, uri)) =>
+          log.debug("Missing auth cookie, redirecting to auth provider")
+          val redirect = authProvider.redirectBrowser(request, callbackUri, uri)
+          context.parent ! AuthResponse(redirect)
+        case Failure(message) =>
+          val response = unauthorizedResponse(message)
+          context.parent ! AuthResponse(response)
+      }
+  }
+
+  def checkAuthenticated(request: HttpRequest): Receive = {
+    case Some(authInfo: AuthInfo) =>
+      log.debug("Already authenticated: {}", authInfo)
+      context.parent ! AuthenticatedSession(authInfo.user)
+      context.become(receive)
+    case None =>
+      log.debug("Not authenticated")
+      val redirect = redirectionResponse(TemporaryRedirect, checkUri(request.uri))
+      context.parent ! AuthResponse(redirect)
+      context.become(receive)
+  }
+
+  def checkCookie(request: HttpRequest, sourceUri: Uri, cookie: HttpCookie): Receive = {
+    case Some(authInfo: AuthInfo) =>
+      log.debug("Found valid cookie: {}", authInfo)
+      val redirectionUri = sourceUri.withPath(setCookiePath)
+        .withQuery(sourceUriParameter -> sourceUri.toString(), cookieParameter -> cookie.content)
+      val redirect = redirectionResponse(TemporaryRedirect, redirectionUri)
+      context.parent ! AuthResponse(redirect)
+      context.become(receive)
+    case None =>
+      log.debug("Checked for cookie, none found. Sending user to auth provider")
+      val redirect = authProvider.redirectBrowser(request, callbackUri, sourceUri)
+
+      context.parent ! AuthResponse(redirect)
+      context.become(receive)
+  }
+
+  case class SaveSessionResult(saved: Boolean)
+
+  def authProviderResponse(request: HttpRequest): Receive = {
+    case AuthCallback(sourceUri, userInfo) =>
+      if (isAuthorized(userInfo)) {
+        val id = generateId
+        log.info("Auth provider callback, generating id '{}' for: {}", id, userInfo)
+        val expiration = sessionExpiration match {
+          case Duration.Inf => None
+          case _ => Some(DateTime.now + sessionExpiration.toMillis)
+        }
+        saveSession(id, AuthInfo(userInfo, expiration)).map(SaveSessionResult) pipeTo self
+        context.become(saveSession(request, sourceUri, id, expiration))
+      } else {
+        log.info("User is not authorized: {}", userInfo)
+        val response = unauthorizedResponse("Permission denied!")
+        context.parent ! AuthResponse(response)
+        context.become(receive)
+      }
+  }
+
+  def isAuthorized(userInfo: UserInfo) = {
+    (allowedEmailsRegex, userInfo.email) match {
+      case (Some(allowedEmailsRegex), Some(email)) => allowedEmailsRegex.findFirstIn(email).isDefined
+      case (Some(_), _) => false
+      case (None, _) => true
+    }
+  }
+
+  def saveSession(request: HttpRequest, sourceUri: Uri, id: String, expiration: Option[DateTime]): Receive = {
+    case SaveSessionResult(true) =>
+      val redirect = redirectionResponse(TemporaryRedirect, sourceUri) + setAuthCookieHeader(id, expiration)
+      context.parent ! AuthResponse(redirect)
+      context.become(receive)
+    case SaveSessionResult(false) =>
+      log.error("Could not save session")
+      val response = HttpResponse(StatusCodes.InternalServerError, "Could create session")
+      context.parent ! AuthResponse(response)
+      context.become(receive)
+  }
+
+  def redirectionResponse(statusCode: Redirection, uri: Uri): HttpResponse = {
+    HttpResponse(statusCode, headers = List(HttpHeaders.Location(uri)))
+  }
+
+  def unauthorizedResponse(message: String): HttpResponse = {
+    HttpResponse(StatusCodes.Unauthorized, message)
+  }
+
+  override def unhandled(message: Any) = {
+    log.warning("Unhandled message: {}", message)
+  }
+}
+
+trait PathRequests {
+  this: CookieAuth =>
+
+  def callbackUri: Uri
+
+  def checkUriBase: Uri
+
+  def cookieParameter: String
+
+  def sourceUriParameter: String
+
+  def setCookiePath: Uri.Path
+
+  case class SetCookieInfo(cookieValue: String, source: Uri)
+
+  case class CheckRequestInfo(cookie: Option[HttpCookie], source: Uri)
+
+  def getSetCookieInfo(request: HttpRequest): Validation[SetCookieInfo, String] = {
+    for {
+      sourceUri <- getParameter(sourceUriParameter)(request)
+      cookie <- getParameter(cookieParameter)(request)
+    } yield SetCookieInfo(cookie, Uri(sourceUri))
+  }
+
+  def getCheckRequestInfo(request: HttpRequest): Validation[CheckRequestInfo, String] = {
+    for {
+      sourceUri <- getParameter(sourceUriParameter)(request)
+    } yield {
+      val cookie = getAuthCookie(request)
+      CheckRequestInfo(cookie.toOption, Uri(sourceUri))
+    }
+  }
 
   def isUri(baseUri: Uri)(uri: Uri): Boolean = uri.authority == baseUri.authority && uri.path == baseUri.path
 
-  def isCallbackUri(uri: Uri): Boolean = isUri(CallbackUri)(uri)
+  def isCallbackRequest(request: HttpRequest): Boolean = isUri(callbackUri)(request.uri)
 
-  def isCheckUri(uri: Uri): Boolean = isUri(CheckUri)(uri)
+  def isCheckRequest(request: HttpRequest): Boolean = isUri(checkUriBase)(request.uri)
 
-  def isSetCookieUri(uri: Uri) = {
-    uri.path == SetCookiePath &&
-      uri.query.get(SourceParameter).isDefined &&
-      uri.query.get(CookieParameter).isDefined
+  def isSetCookieRequest(request: HttpRequest) = {
+    val uri = request.uri
+    uri.path == setCookiePath &&
+      uri.query.get(sourceUriParameter).isDefined &&
+      uri.query.get(cookieParameter).isDefined
+  }
+}
+
+trait SecureRandomIdGenerator {
+  private val random = new SecureRandom()
+
+  def generateId = BigInt(130, random).toString(32)
+}
+
+trait CookieAuth extends Utils {
+  def authCookieName: String
+
+  def getAuthCookie(request: HttpRequest) = getCookie(authCookieName)(request)
+
+  def setAuthCookieHeader(content: String, expiration: Option[DateTime]) = {
+    val expirationSprayDate = expiration.map(d => SprayDateTime(d.millis))
+    val expirationInSeconds = expiration.map(date => (date - DateTime.now.millis).millis / 100)
+
+    val cookie = HttpCookie(authCookieName, content,
+      expires = expirationSprayDate,
+      maxAge = expirationInSeconds,
+      path = Some("/"),
+      httpOnly = true)
+    HttpHeaders.`Set-Cookie`(cookie)
+  }
+}
+
+trait HeaderAuth {
+  def authHeaderName: String
+
+  def getAuthHeader(request: HttpRequest) = request.headers.collectFirst {
+    case HttpHeader(name, credentials) if name == authHeaderName => credentials
+  }
+}
+
+trait Utils {
+  def getCookie(cookieName: String)(request: HttpRequest): Validation[HttpCookie, String] = {
+    request.cookies.find(_.name == cookieName) match {
+      case Some(cookie) =>
+        Success(cookie)
+      case None =>
+        Failure(s"Missing $cookieName cookie.")
+    }
+  }
+
+  def getParameter(parameterName: String)(request: HttpRequest): Validation[String, String] = {
+    request.uri.query.get(parameterName) match {
+      case Some(value) =>
+        Success(value)
+      case None =>
+        Failure(s"Missing $parameterName parameter.")
+    }
   }
 }

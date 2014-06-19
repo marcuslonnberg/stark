@@ -2,18 +2,18 @@ package se.marcuslonnberg.stark
 
 import akka.actor.ActorSystem
 import akka.io.IO
-import se.marcuslonnberg.stark.api.ApiActor
-import spray.can.Http
-import spray.http.Uri
-import se.marcuslonnberg.stark.proxy.{ProxiesActor, ProxyConf}
-import se.marcuslonnberg.stark.auth.AuthActor
 import com.typesafe.config.{Config, ConfigFactory}
 import net.ceedubs.ficus.Ficus._
+import se.marcuslonnberg.stark.api.ApiActor
 import se.marcuslonnberg.stark.api.ProxyApiActor.AddProxy
-import spray.http.Uri.Host
-import scala.concurrent.duration._
+import se.marcuslonnberg.stark.proxy.{ProxiesActor, ProxyConf}
+import spray.can.Http
 import spray.can.server.ServerSettings
+import spray.http.Uri
+import spray.http.Uri.Host
+
 import scala.collection.convert.wrapAsScala._
+import scala.concurrent.duration._
 
 object StarkProxyApp extends App with SSLSupport {
   implicit val system = ActorSystem("proxy")
@@ -23,9 +23,8 @@ object StarkProxyApp extends App with SSLSupport {
 
   val apiHost = Uri.Host(conf.as[String]("server.apiHost"))
   val proxies = system.actorOf(ProxiesActor.props(apiHost), "proxy")
-  val auth = system.actorOf(AuthActor.props(), "auth")
   val apiRoutingActor = system.actorOf(ApiActor.props(proxies), "api-routing")
-  val connector = system.actorOf(ConnectActor.props(proxies, auth, apiRoutingActor, apiHost), "connector")
+  val connector = system.actorOf(ConnectActor.props(proxies, apiRoutingActor, apiHost), "connector")
 
   import system.dispatcher
 
@@ -51,7 +50,7 @@ object StarkProxyApp extends App with SSLSupport {
         val privateKeyFile = bindConfig.as[String]("private-key-file")
         implicit val sslContext = createSSLContext(certFile, privateKeyFile)
 
-        bind.copy(settings = Some(ServerSettings(system).copy(sslEncryption = ssl)))
+        bind.copy(settings = Some(ServerSettings(conf).copy(sslEncryption = ssl)))
       } else {
         bind
       }

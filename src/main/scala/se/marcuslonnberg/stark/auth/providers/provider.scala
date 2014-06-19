@@ -1,9 +1,9 @@
-package se.marcuslonnberg.stark.auth
+package se.marcuslonnberg.stark.auth.providers
 
-import akka.actor.{Props, ActorRef}
+import akka.actor.{ActorRef, Props}
 import se.marcuslonnberg.stark.utils.AES
-import spray.http.{HttpResponse, HttpRequest, Uri, HttpCookie}
 import se.marcuslonnberg.stark.utils.Implicits._
+import spray.http.{HttpCookie, HttpRequest, HttpResponse, Uri}
 
 object AuthProvider {
 
@@ -12,6 +12,8 @@ object AuthProvider {
 }
 
 trait AuthProvider {
+  def actorName: String
+
   def redirectBrowser(request: HttpRequest, callbackUri: Uri, sourceUri: Uri): HttpResponse
 
   def props(sender: ActorRef): Props

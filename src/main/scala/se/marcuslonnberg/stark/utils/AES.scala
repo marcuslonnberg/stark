@@ -11,8 +11,10 @@ object AES {
     keyGen.generateKey().getEncoded
   }
 
+  def getCipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+
   def encrypt(plainText: String, encryptionKey: Array[Byte]): String = {
-    val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+    val cipher = getCipher
     val key = new SecretKeySpec(encryptionKey, "AES")
     cipher.init(Cipher.ENCRYPT_MODE, key)
     val out = cipher.doFinal(plainText.getBytes("UTF-8"))
@@ -21,7 +23,7 @@ object AES {
 
   def decrypt(cipherText: String, encryptionKey: Array[Byte]): String = {
     val cipherData = new Base64().decode(cipherText)
-    val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+    val cipher = getCipher
     val key = new SecretKeySpec(encryptionKey, "AES")
     cipher.init(Cipher.DECRYPT_MODE, key)
     new String(cipher.doFinal(cipherData), "UTF-8")

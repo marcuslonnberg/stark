@@ -10,7 +10,7 @@ import se.marcuslonnberg.stark.auth.AuthActor._
 import se.marcuslonnberg.stark.auth.providers.{AuthProviderRequestActor, AuthProvider, GoogleAuthProvider}
 import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
 import se.marcuslonnberg.stark.utils.Implicits._
-import spray.http.StatusCodes.{Redirection, TemporaryRedirect}
+import spray.http.StatusCodes.{Unauthorized, Redirection, TemporaryRedirect}
 import spray.http.{DateTime => SprayDateTime, _}
 import com.github.nscala_time.time.Imports._
 import se.marcuslonnberg.stark.utils._
@@ -22,7 +22,11 @@ object AuthActor {
 
   case class AuthInfo(user: UserInfo, expires: Option[DateTime])
 
-  case object NotAuthenticated
+  sealed trait NotAuthenticated
+
+  case object NotAuthenticatedHeader extends NotAuthenticated
+
+  case object NotAuthenticatedSession extends NotAuthenticated
 
   sealed trait Authenticated
 
@@ -74,16 +78,19 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
       getAuthHeader(request) match {
         case Some(header) =>
           log.debug("Found auth header: {}", header)
-          authorizedHeader(header).map {
+          containsHeader(header).map {
             case true => AuthenticatedHeader
-            case false => NotAuthenticated
+            case false => NotAuthenticatedHeader
           } pipeTo self
-          context.become(checkAuthenticated(request)) // TODO header?
+          context.become(checkAuthenticated(request))
         case None =>
           getAuthCookie(request) match {
             case Success(cookie) =>
               log.debug("Found auth cookie: {}", cookie)
-              getSession(cookie.content) pipeTo self
+              getSession(cookie.content).map {
+                case Some(authInfo) => AuthenticatedSession(authInfo.user)
+                case None => NotAuthenticatedSession
+              } pipeTo self
               context.become(checkAuthenticated(request))
             case Failure(_) =>
               log.debug("No cookie or header in request, making check request")
@@ -128,14 +135,19 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
   }
 
   def checkAuthenticated(request: HttpRequest): Receive = {
-    case Some(authInfo: AuthInfo) =>
-      log.debug("Already authenticated: {}", authInfo)
-      context.parent ! AuthenticatedSession(authInfo.user)
+    case authenticated: Authenticated =>
+      log.debug("Authenticated: {}", authenticated)
+      context.parent ! authenticated
       context.become(receive)
-    case None =>
-      log.debug("Not authenticated")
+    case NotAuthenticatedSession =>
+      log.debug("Not authenticated by session")
       val redirect = redirectionResponse(TemporaryRedirect, checkUri(request.uri))
       context.parent ! AuthResponse(redirect)
+      context.become(receive)
+    case NotAuthenticatedHeader =>
+      log.debug("Not authenticated by header")
+      val response = HttpResponse(Unauthorized, "Permission denied!")
+      context.parent ! AuthResponse(response)
       context.become(receive)
   }
 
@@ -201,7 +213,7 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
   }
 
   def unauthorizedResponse(message: String): HttpResponse = {
-    HttpResponse(StatusCodes.Unauthorized, message)
+    HttpResponse(Unauthorized, message)
   }
 
   override def unhandled(message: Any) = {
@@ -284,7 +296,7 @@ trait HeaderAuth {
   def authHeaderName: String
 
   def getAuthHeader(request: HttpRequest) = request.headers.collectFirst {
-    case HttpHeader(name, credentials) if name == authHeaderName => credentials
+    case header@HttpHeader(_, credentials) if header.is(authHeaderName.toLowerCase) => credentials
   }
 }
 

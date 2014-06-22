@@ -1,37 +1,26 @@
 package se.marcuslonnberg.stark.auth.storage
 
-import akka.actor.ActorSystem
 import akka.util.ByteString
 import com.github.nscala_time.time.Imports._
-import com.typesafe.config.ConfigFactory
-import net.ceedubs.ficus.Ficus._
 import org.json4s.native.Serialization._
 import redis.{ByteStringFormatter, RedisClient}
+import se.marcuslonnberg.stark.JsonSupport
 import se.marcuslonnberg.stark.auth.AuthActor.AuthInfo
+import se.marcuslonnberg.stark.storage.RedisConnection
 
 import scala.concurrent.Future
 
 trait RedisAuthStore extends RedisConnection with RedisAuthHeadersStore with RedisAuthSessionsStore
 
-trait RedisConnection {
-  implicit def system: ActorSystem
-
-  private val config = ConfigFactory.load().getConfig("redis")
-  val host = config.as[String]("host")
-  val port = config.as[Int]("port")
-  val password = config.as[Option[String]]("password")
-  val db = config.as[Option[Int]]("db")
-
-  val client = RedisClient(host, port, password, db)
-}
-
+/**
+ * Sessions are stored as "auth:sessions:id" where "id" is the id of the session.
+ */
 trait RedisAuthSessionsStore {
   def client: RedisClient
 
-  implicit val authInfoFormatter = new ByteStringFormatter[AuthInfo] {
+  private implicit def executionContext = client.executionContext
 
-    import se.marcuslonnberg.stark.JsonProtocol._
-
+  implicit val authInfoFormatter = new ByteStringFormatter[AuthInfo] with JsonSupport {
     def serialize(data: AuthInfo) = ByteString(write(data))
 
     def deserialize(bs: ByteString) = read[AuthInfo](bs.utf8String)
@@ -48,9 +37,27 @@ trait RedisAuthSessionsStore {
     client.get(key)
   }
 
-  def sessionKey(id: String): String = "auth:sessions:" + id
+  def sessionKeys: Future[Seq[String]] = client.keys(sessionKey("*"))
+
+  def sessionIds: Future[Seq[String]] = sessionKeys.map(_.map(sessionKeyToId))
+
+  private def sessionKeyToId(key: String): String = key.substring(sessionKeyPrefix.length)
+
+  def getSessions: Future[Map[String, Option[AuthInfo]]] = {
+    for {
+      keys <- sessionKeys
+      sessions <- client.mget(keys: _*)
+    } yield keys.map(sessionKeyToId).zip(sessions).toMap
+  }
+
+  val sessionKeyPrefix = "auth:session:"
+
+  def sessionKey(id: String): String = sessionKeyPrefix + id
 }
 
+/**
+ * Headers are stored at "auth:headers".
+ */
 trait RedisAuthHeadersStore {
   def client: RedisClient
 
@@ -64,8 +71,9 @@ trait RedisAuthHeadersStore {
     client.srem(headersKey, id)
   }
 
-  def authorizedHeader(id: String) = {
+  def getHeaders: Future[Seq[String]] = client.smembers[String](headersKey)
+
+  def containsHeader(id: String) = {
     client.sismember(headersKey, id)
   }
-
 }

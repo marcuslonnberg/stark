@@ -4,7 +4,7 @@ import akka.actor.{ActorRef, Props, ActorLogging, Actor}
 import akka.io.IO
 import akka.io.Tcp.{ConnectionClosed, Connected}
 import com.typesafe.config.ConfigFactory
-import se.marcuslonnberg.stark.proxy.ProxiesActor.ProxyRequest
+import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, ProxyRequestRouting}
 import spray.can.Http
 import spray.can.client.ClientConnectionSettings
 import spray.http.HttpHeaders.RawHeader
@@ -16,7 +16,8 @@ object ProxyConnectionActor {
 
 class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging with RequestTransformer {
   val config = ConfigFactory.load()
-  val cookieName = config.getString("auth.cookie-name")
+  val authCookieName = config.getString("auth.cookie-name")
+  val authHeaderName = config.getString("auth.header-name")
 
   import context._
 
@@ -25,21 +26,18 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
   def receive = firstRequest
 
   def firstRequest: Receive = {
-    case (proxyRequest: ProxyRequest, receiver: ActorRef) =>
+    case rr: ProxyRequestRouting =>
       log.debug("Connecting")
-      val transformedRequest = transformRequest(proxyRequest, proxy)
+      val transformedRequest = transformRequest(rr.request, proxy)
       val requestUri = transformedRequest.uri
 
       val settings = ClientConnectionSettings(system).copy(chunklessStreaming = false)
-      val port = {
-        val p = requestUri.authority.port
-        if (p == 0) 80 else p
-      }
+      val port = requestUri.effectivePort
 
       io ! Http.Connect(requestUri.authority.host.address, port,
         sslEncryption = requestUri.scheme == "https",
         settings = Some(settings))
-      context.become(connecting(transformedRequest, receiver))
+      context.become(connecting(transformedRequest, rr.receiver))
   }
 
   def connecting(transformedRequest: HttpRequest, receiver: ActorRef): Receive = {
@@ -68,32 +66,37 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
     case close: ConnectionClosed =>
       log.debug("Close")
       context.become(firstRequest)
-    case x =>
-      log.debug("Other: {}", x)
   }
 
   def request: Receive = {
-    case (proxyRequest: ProxyRequest, receiver: ActorRef) =>
-      val transformedRequest = transformRequest(proxyRequest, proxy)
+    case ProxyRequestRouting(request, receiver) =>
+      val transformedRequest = transformRequest(request, proxy)
 
       io ! transformedRequest
       context.become(response(receiver))
   }
+
+  override def unhandled(message: Any) = {
+      log.warning("Unhandled: {}", message)
+  }
 }
 
 trait RequestTransformer {
-  def cookieName: String
+  def authCookieName: String
+
+  def authHeaderName: String
 
   def transformRequest(proxyRequest: ProxyRequest, conf: ProxyConf): HttpRequest = {
     val requestUri = proxyRequest.request.uri
-    val proxyPath = requestUri.path.dropChars(conf.path.length)
+    val proxyPath = requestUri.path.dropChars(conf.location.path.length)
     val uri = conf.upstream.withPath(conf.upstream.path ++ proxyPath)
 
     val newHeaders = conf.headers.map(header => RawHeader(header.name, header.value))
 
-    val headers = proxyRequest.request.headers.map {
+    val authHeaderNameLower = authHeaderName.toLowerCase
+    val headers = proxyRequest.request.headers.withFilter(_.isNot(authHeaderNameLower)).map {
       case _: HttpHeaders.Host => HttpHeaders.Host(conf.upstream.authority.host.address, conf.upstream.authority.port)
-      case cookie: HttpHeaders.Cookie => HttpHeaders.Cookie(cookie.cookies.filter(_.name != cookieName))
+      case cookie: HttpHeaders.Cookie => HttpHeaders.Cookie(cookie.cookies.filter(_.name != authCookieName))
       case other => other
     } ++ newHeaders
 

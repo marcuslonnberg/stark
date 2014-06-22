@@ -1,44 +1,84 @@
 package se.marcuslonnberg.stark.proxy
 
 import akka.actor.{Actor, ActorLogging, Props}
-import se.marcuslonnberg.stark.auth.AuthActor.UserInfo
-import se.marcuslonnberg.stark.proxy.ProxiesActor.{NoProxyConfFound, ProxyFor, SetProxies}
+import se.marcuslonnberg.stark.api.RedisProxyStorage
+import se.marcuslonnberg.stark.proxy.ProxiesActor._
 import spray.http._
+import akka.pattern.pipe
 
 object ProxiesActor {
 
-  def props(apiHost: Uri.Host) = Props(classOf[ProxiesActor], apiHost)
-
-  case class ProxyRequest(request: HttpRequest, userInfo: Option[UserInfo] = None, cookie: Option[HttpCookie] = None)
+  def props() = Props(classOf[ProxiesActor])
 
   case class SetProxies(proxies: List[ProxyConf])
 
+  case class AddProxy(proxy: ProxyConf)
+
+  case class AddProxyResponse(added: Boolean)
+
+  case class RemoveProxy(location: ProxyLocation)
+
+  case class RemoveProxyResponse(removed: Long)
+
   case class ProxyFor(requestUri: Uri)
 
-  case object NoProxyConfFound
+  case class ProxyForResponse(proxy: Option[ProxyConf])
+
+  case class GetProxy(location: ProxyLocation)
+
+  case class GetProxyResponse(proxy: Option[ProxyConf])
+
+  case object GetProxies
+
+  case class GetProxiesResponse(proxies: List[ProxyConf])
 
 }
 
-class ProxiesActor(apiHost: Uri.Host) extends Actor with ActorLogging {
+class ProxiesActor extends Actor with ActorLogging {
+
+  import context.dispatcher
+
+  val storage = new RedisProxyStorage {
+    implicit def system = context.system
+  }
+
+  storage.getProxies.map { proxies =>
+    SetProxies(proxies.flatten.toList)
+  } pipeTo self
+
   override def receive: Receive = state(List.empty)
 
   def state(proxies: List[ProxyConf]): Receive = {
-    case SetProxies(newProxies) =>
-      context.become(state(newProxies))
     case ProxyFor(requestUri) =>
-      val response = getProxy(proxies, requestUri) match {
-        case Some(proxy) => proxy
-        case None => NoProxyConfFound
-      }
-      sender ! response
+      val proxy = getProxy(proxies, requestUri)
+      sender ! ProxyForResponse(proxy)
+
+    case SetProxies(newProxies) =>
+      log.info("Setting new proxies. {} proxies total", newProxies.length)
+      context.become(state(newProxies))
+
+    case GetProxies =>
+      sender ! GetProxiesResponse(proxies)
+
+    case AddProxy(proxy) =>
+      log.info("Adding proxy: {}", proxy)
+      context.become(state(proxy :: proxies))
+      storage.addProxy(proxy).map(AddProxyResponse) pipeTo sender()
+
+    case RemoveProxy(location) =>
+      val updatedProxies = proxies.filterNot(_.location == location)
+      val diff = proxies.diff(updatedProxies)
+      log.info("Removed proxies: {}", diff)
+      context.become(state(updatedProxies))
+      storage.removeProxy(location).map(RemoveProxyResponse) pipeTo sender()
   }
 
   def getProxy(proxies: List[ProxyConf], requestUri: Uri): Option[ProxyConf] = {
     val requestAddress = requestUri.authority.host
     val requestPath = requestUri.path
     proxies.find { proxy =>
-      val path = requestPath.startsWith(proxy.path)
-      val address = requestAddress == proxy.host
+      val path = requestPath.startsWith(proxy.location.path)
+      val address = requestAddress == proxy.location.host
       address && path
     }
   }

@@ -1,11 +1,17 @@
 package se.marcuslonnberg.stark.proxy
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import se.marcuslonnberg.stark.proxy.ProxiesActor.{NoProxyConfFound, ProxyFor, ProxyRequest}
-import spray.http.{HttpResponse, StatusCodes}
+import se.marcuslonnberg.stark.auth.AuthActor.UserInfo
+import se.marcuslonnberg.stark.proxy.ProxiesActor.{ProxyFor, ProxyForResponse}
+import se.marcuslonnberg.stark.proxy.ProxyRequestActor.ProxyRequestRouting
+import spray.http.{HttpCookie, HttpRequest, HttpResponse, StatusCodes}
 
 object ProxyRequestActor {
   def props(proxiesRef: ActorRef) = Props(classOf[ProxyRequestActor], proxiesRef)
+
+  case class ProxyRequest(request: HttpRequest, userInfo: Option[UserInfo] = None, cookie: Option[HttpCookie] = None)
+
+  case class ProxyRequestRouting(request: ProxyRequest, receiver: ActorRef)
 }
 
 class ProxyRequestActor(proxiesRef: ActorRef) extends Actor with ActorLogging {
@@ -14,14 +20,14 @@ class ProxyRequestActor(proxiesRef: ActorRef) extends Actor with ActorLogging {
   var connections = Map.empty[ProxyConf, ActorRef]
 
   def receiveRequest: Receive = {
-    case (proxyRequest@ProxyRequest(request, userInfo, cookie), receiver: ActorRef) =>
-      log.debug("Requesting proxy for {}", request.uri)
-      proxiesRef ! ProxyFor(request.uri)
-      context.become(waitForProxyConf(proxyRequest, receiver))
+    case routing@ProxyRequestRouting(request, _) =>
+      log.debug("Requesting proxy for {}", request.request.uri)
+      proxiesRef ! ProxyFor(request.request.uri)
+      context.become(waitForProxyConf(routing))
   }
 
-  def waitForProxyConf(proxyRequest: ProxyRequest, receiver: ActorRef): Receive = {
-    case proxy: ProxyConf =>
+  def waitForProxyConf(routing: ProxyRequestRouting): Receive = {
+    case ProxyForResponse(Some(proxy)) =>
       log.debug("Found proxy: {}", proxy)
 
       val connection = connections.getOrElse(proxy, {
@@ -30,11 +36,11 @@ class ProxyRequestActor(proxiesRef: ActorRef) extends Actor with ActorLogging {
         c
       })
 
-      connection ! (proxyRequest -> receiver)
+      connection ! routing
       context.become(receiveRequest)
-    case NoProxyConfFound =>
+    case ProxyForResponse(None) =>
       log.debug("Could not find any proxy")
-      receiver ! HttpResponse(StatusCodes.NotFound, s"No proxy for ${proxyRequest.request.uri}")
+      routing.receiver ! HttpResponse(StatusCodes.NotFound, s"No proxy for ${routing.request.request.uri}")
       context.become(receiveRequest)
   }
 }

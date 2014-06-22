@@ -9,6 +9,7 @@ trait JsonSupport extends Json4sSupport {
     JsonFormats.uriFormat +
     JsonFormats.uriHostFormat +
     JsonFormats.uriPathFormat +
+    JsonFormats.proxyLocationFormat +
     JsonFormats.proxyFormat
 }
 

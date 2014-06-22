@@ -4,8 +4,8 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.Tcp.ConnectionClosed
 import se.marcuslonnberg.stark.auth.AuthActor
 import se.marcuslonnberg.stark.auth.AuthActor.{AuthResponse, Authenticated, AuthenticatedHeader, AuthenticatedSession}
-import se.marcuslonnberg.stark.proxy.ProxiesActor.ProxyRequest
 import se.marcuslonnberg.stark.proxy.ProxyRequestActor
+import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, ProxyRequestRouting}
 import spray.http.HttpRequest
 import spray.http.Uri.Host
 
@@ -42,9 +42,9 @@ class ConnectionActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host)
       } else {
         auth match {
           case AuthenticatedSession(userInfo, cookie) =>
-            proxyActor ! (ProxyRequest(request, Some(userInfo), cookie) -> receiver)
+            proxyActor ! ProxyRequestRouting(ProxyRequest(request, Some(userInfo), cookie), receiver)
           case AuthenticatedHeader =>
-            proxyActor ! (ProxyRequest(request) -> receiver)
+            proxyActor ! ProxyRequestRouting(ProxyRequest(request), receiver)
         }
       }
 

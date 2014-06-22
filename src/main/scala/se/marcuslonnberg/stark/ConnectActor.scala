@@ -12,7 +12,7 @@ object ConnectActor {
 class ConnectActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) extends Actor with ActorLogging {
   override def receive = {
     case Http.Connected(remoteAddress, localAddress) =>
-      log.info("Connection established to {} from {}", localAddress, remoteAddress)
+      log.info("Connection established from {} to {}", remoteAddress, localAddress)
       val proxy = context.actorOf(ConnectionActor.props(proxiesActor, apiActor, apiHost))
       sender ! Http.Register(proxy)
   }

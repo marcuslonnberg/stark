@@ -1,10 +1,10 @@
 package se.marcuslonnberg.stark.proxy
 
 import akka.actor.{Actor, ActorLogging, Props}
+import akka.pattern.pipe
 import se.marcuslonnberg.stark.api.RedisProxyStorage
 import se.marcuslonnberg.stark.proxy.ProxiesActor._
 import spray.http._
-import akka.pattern.pipe
 
 import scala.util.{Failure, Success}
 
@@ -16,7 +16,17 @@ object ProxiesActor {
 
   case class AddProxy(proxy: ProxyConf)
 
-  case class AddProxyResponse(added: Boolean)
+  sealed trait AddProxyResponse
+
+  object AddProxyResponses {
+
+    case object Added extends AddProxyResponse
+
+    case class AddedWithProblem(reason: String) extends AddProxyResponse
+
+    case class NotAdded(reason: String) extends AddProxyResponse
+
+  }
 
   case class RemoveProxy(location: ProxyLocation)
 
@@ -68,9 +78,16 @@ class ProxiesActor extends Actor with ActorLogging {
       sender ! GetProxiesResponse(proxies)
 
     case AddProxy(proxy) =>
-      log.info("Adding proxy: {}", proxy)
-      context.become(state(proxy :: proxies))
-      storage.addProxy(proxy).map(AddProxyResponse) pipeTo sender()
+      if (proxies.exists(_.location == proxy.location)) {
+        sender ! AddProxyResponses.NotAdded(s"A Proxy already exists with the same location (${proxy.location})")
+      } else {
+        log.info("Adding proxy: {}", proxy)
+        context.become(state(proxy :: proxies))
+        storage.addProxy(proxy).map {
+          case true => AddProxyResponses.Added
+          case false => AddProxyResponses.AddedWithProblem("Proxy was added, but could not be saved to persistence.")
+        } pipeTo sender()
+      }
 
     case RemoveProxy(location) =>
       val updatedProxies = proxies.filterNot(_.location == location)

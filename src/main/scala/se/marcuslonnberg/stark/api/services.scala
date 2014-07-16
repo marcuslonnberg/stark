@@ -35,10 +35,12 @@ trait ProxiesApiService extends HttpService with JsonSupport {
           post {
             entity(as[ProxyConf]) { proxy =>
               onSuccess(proxiesActor ? AddProxy(proxy)) {
-                case AddProxyResponse(true) =>
+                case AddProxyResponses.Added =>
                   complete(proxy)
-                case AddProxyResponse(false) =>
-                  complete(StatusCodes.BadRequest, "Proxy might already exist.")
+                case AddProxyResponses.NotAdded(reason) =>
+                  complete(StatusCodes.BadRequest, reason)
+                case AddProxyResponses.AddedWithProblem(reason) =>
+                  complete(StatusCodes.ServerError, reason)
               }
             }
           }

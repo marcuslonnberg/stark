@@ -29,20 +29,21 @@ object StarkProxyApp extends App with SSLSupport {
   bindings.foreach(b => bind(b.toConfig))
 
   def bind(bindConfig: Config) = {
-    val bindInterface = bindConfig.getAs[String]("interface").getOrElse(conf.as[String]("server.default-interface"))
+    val bindInterface = bindConfig.as[Option[String]]("interface").getOrElse(conf.as[String]("server.default-interface"))
     val port = bindConfig.as[Int]("port")
-    val ssl = bindConfig.getAs[Boolean]("ssl").getOrElse(false)
+
+    case class SLLConfig(`cert-file`: String, `private-key-file`: String)
+    import net.ceedubs.ficus.readers.ArbitraryTypeReader._
+    val ssl = bindConfig.as[Option[SLLConfig]]("ssl")
 
     val bind = {
       val bind = Http.Bind(connector, interface = bindInterface, port = port)
-      if (ssl) {
-        val certFile = bindConfig.as[String]("cert-file")
-        val privateKeyFile = bindConfig.as[String]("private-key-file")
-        implicit val sslContext = createSSLContext(certFile, privateKeyFile)
-
-        bind.copy(settings = Some(ServerSettings(conf).copy(sslEncryption = ssl)))
-      } else {
-        bind
+      ssl match {
+        case Some(SLLConfig(certPath, privateKeyPath)) =>
+          implicit val sslContext = createSSLContext(certPath, privateKeyPath)
+          bind.copy(settings = Some(ServerSettings(conf).copy(sslEncryption = true)))
+        case None =>
+          bind
       }
     }
 

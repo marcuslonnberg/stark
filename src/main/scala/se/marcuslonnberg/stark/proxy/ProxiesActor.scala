@@ -6,6 +6,8 @@ import se.marcuslonnberg.stark.proxy.ProxiesActor._
 import spray.http._
 import akka.pattern.pipe
 
+import scala.util.{Failure, Success}
+
 object ProxiesActor {
 
   def props() = Props(classOf[ProxiesActor])
@@ -42,9 +44,14 @@ class ProxiesActor extends Actor with ActorLogging {
     implicit def system = context.system
   }
 
-  storage.getProxies.map { proxies =>
-    SetProxies(proxies.flatten.toList)
-  } pipeTo self
+  override def preStart() = {
+    storage.getProxies onComplete {
+      case Success(proxies) =>
+        self ! SetProxies(proxies.flatten.toList)
+      case Failure(ex) =>
+        log.error(ex, "Could not load proxies")
+    }
+  }
 
   override def receive: Receive = state(List.empty)
 

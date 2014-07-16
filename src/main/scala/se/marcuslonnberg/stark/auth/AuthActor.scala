@@ -2,13 +2,14 @@ package se.marcuslonnberg.stark.auth
 
 import java.security.SecureRandom
 
-import akka.actor.{Actor, ActorLogging, Props}
+import akka.actor.{ActorRef, Actor, ActorLogging, Props}
 import akka.pattern.pipe
 import com.typesafe.config.ConfigFactory
 import net.ceedubs.ficus.Ficus._
 import se.marcuslonnberg.stark.auth.AuthActor._
 import se.marcuslonnberg.stark.auth.providers.{AuthProviderRequestActor, AuthProvider, GoogleAuthProvider}
 import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
+import se.marcuslonnberg.stark.proxy.ProxiesActor.{ProxyForResponse, ProxyFor}
 import se.marcuslonnberg.stark.utils.Implicits._
 import spray.http.StatusCodes.{Unauthorized, Redirection, TemporaryRedirect}
 import spray.http.{DateTime => SprayDateTime, _}
@@ -42,11 +43,11 @@ object AuthActor {
 
   case class AuthCallback(requestUri: Uri, userInfo: UserInfo)
 
-  def props() = Props[AuthActor]()
+  def props(proxiesActor: ActorRef) = Props(classOf[AuthActor], proxiesActor)
 
 }
 
-class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth with SecureRandomIdGenerator with PathRequests with RedisAuthStore {
+class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with CookieAuth with HeaderAuth with SecureRandomIdGenerator with PathRequests with RedisAuthStore {
 
   import context.dispatcher
 
@@ -60,7 +61,7 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
   val setCookiePath: Uri.Path = Uri.Path(config.as[String]("set-cookie-path"))
   val cookieParameter: String = config.as[String]("cookie-parameter")
   val sourceUriParameter: String = config.as[String]("source-uri-parameter")
-  val allowedEmailsRegex: Option[Regex] = config.as[Option[String]]("allowed-emails-regex").map(_.r)
+  val allowedEmailsRegexOption: Option[Regex] = config.as[Option[String]]("allowed-emails-regex").map(_.r)
   val sessionExpiration: Duration = config.as[Option[FiniteDuration]]("session-expiration").getOrElse(Duration.Inf)
   val authProvider: AuthProvider = {
     config.as[String]("provider") match {
@@ -154,16 +155,32 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
   def checkCookie(request: HttpRequest, sourceUri: Uri, cookie: HttpCookie): Receive = {
     case Some(authInfo: AuthInfo) =>
       log.debug("Found valid cookie: {}", authInfo)
-      val redirectionUri = sourceUri.withPath(setCookiePath)
-        .withQuery(sourceUriParameter -> sourceUri.toString(), cookieParameter -> cookie.content)
-      val redirect = redirectionResponse(TemporaryRedirect, redirectionUri)
-      context.parent ! AuthResponse(redirect)
-      context.become(receive)
+      // Before we make the 'set cookie' request we must check that the source URI is an URL that have a proxy
+      // configuration, otherwise it would be possible to steal the cookie.
+      proxiesActor ! ProxyFor(sourceUri)
+      context.become(checkUri(sourceUri, cookie))
     case None =>
       log.debug("Checked for cookie, none found. Sending user to auth provider")
       val redirect = authProvider.redirectBrowser(request, callbackUri, sourceUri)
 
       context.parent ! AuthResponse(redirect)
+      context.become(receive)
+  }
+
+  def checkUri(sourceUri: Uri, cookie: HttpCookie): Receive = {
+    case ProxyForResponse(Some(conf)) =>
+      log.debug("Source uri have a proxy conf, {}, {}", sourceUri, conf)
+
+      val redirectionUri = sourceUri.withPath(setCookiePath)
+        .withQuery(sourceUriParameter -> sourceUri.toString(), cookieParameter -> cookie.content)
+      val redirect = redirectionResponse(TemporaryRedirect, redirectionUri)
+      context.parent ! AuthResponse(redirect)
+      context.become(receive)
+
+    case ProxyForResponse(None) =>
+      log.debug("Source URI ({}) is not behind a proxy, request terminated.", sourceUri)
+      val response = HttpResponse(Unauthorized, s"Permission denied! There is no proxy for $sourceUri")
+      context.parent ! AuthResponse(response)
       context.become(receive)
   }
 
@@ -189,7 +206,7 @@ class AuthActor extends Actor with ActorLogging with CookieAuth with HeaderAuth 
   }
 
   def isAuthorized(userInfo: UserInfo) = {
-    (allowedEmailsRegex, userInfo.email) match {
+    (allowedEmailsRegexOption, userInfo.email) match {
       case (Some(allowedEmailsRegex), Some(email)) => allowedEmailsRegex.findFirstIn(email).isDefined
       case (Some(_), _) => false
       case (None, _) => true

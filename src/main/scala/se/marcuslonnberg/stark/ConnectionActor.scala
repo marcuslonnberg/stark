@@ -17,7 +17,7 @@ object ConnectionActor {
 class ConnectionActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) extends Actor with ActorLogging {
   val proxyActor = context.actorOf(ProxyRequestActor.props(proxiesActor), "proxy")
 
-  val authActor = context.actorOf(AuthActor.props(), "auth")
+  val authActor = context.actorOf(AuthActor.props(proxiesActor), "auth")
 
   log.debug("Connected")
 

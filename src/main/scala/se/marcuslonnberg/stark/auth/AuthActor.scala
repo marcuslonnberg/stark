@@ -140,11 +140,13 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
       log.debug("Authenticated: {}", authenticated)
       context.parent ! authenticated
       context.become(receive)
+
     case NotAuthenticatedSession =>
       log.debug("Not authenticated by session")
       val redirect = redirectionResponse(TemporaryRedirect, checkUri(request.uri))
       context.parent ! AuthResponse(redirect)
       context.become(receive)
+
     case NotAuthenticatedHeader =>
       log.debug("Not authenticated by header")
       val response = HttpResponse(Unauthorized, "Permission denied!")
@@ -159,6 +161,7 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
       // configuration, otherwise it would be possible to steal the cookie.
       proxiesActor ! ProxyFor(sourceUri)
       context.become(checkUri(sourceUri, cookie))
+
     case None =>
       log.debug("Checked for cookie, none found. Sending user to auth provider")
       val redirect = authProvider.redirectBrowser(request, callbackUri, sourceUri)
@@ -218,6 +221,7 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
       val redirect = redirectionResponse(TemporaryRedirect, sourceUri) + setAuthCookieHeader(id, expiration)
       context.parent ! AuthResponse(redirect)
       context.become(receive)
+
     case SaveSessionResult(false) =>
       log.error("Could not save session")
       val response = HttpResponse(StatusCodes.InternalServerError, "Could create session")

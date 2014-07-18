@@ -8,7 +8,7 @@ object Dependencies {
   }
 
   val Spray = {
-    val version = "1.3.1-20140423"
+    val version = "1.3.1"
     Seq("io.spray" %% "spray-can" % version,
       "io.spray" %% "spray-client" % version,
       "io.spray" %% "spray-routing" % version,

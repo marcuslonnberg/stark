@@ -9,8 +9,7 @@ import spray.http.Uri
 class JsonFormatsSpec extends FreeSpec with Matchers with Inside with JsonSupport {
   "Proxy" - {
     "Basic" - {
-      val json = ("location" ->
-        ("host" -> "test.local") ~ ("path" -> "")) ~
+      val json = ("location" -> "test.local") ~
         ("upstream" -> "http://test.example.com/xyz") ~
         ("headers" ->
           List(("name" -> "Authorization") ~ ("value" -> "Basic 123")))

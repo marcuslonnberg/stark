@@ -301,11 +301,11 @@ trait CookieAuth extends Utils {
   def getAuthCookie(request: HttpRequest) = getCookie(authCookieName)(request)
 
   def setAuthCookieHeader(content: String, expiration: Option[DateTime]) = {
-    val expirationSprayDate = expiration.map(d => SprayDateTime(d.millis))
-    val expirationInSeconds = expiration.map(date => (date - DateTime.now.millis).millis / 100)
+    val expirationInSprayDate = expiration.map(d => SprayDateTime(d.getMillis))
+    val expirationInSeconds = expiration.map(date => (date.getMillis - DateTime.now.getMillis) / 1000)
 
     val cookie = HttpCookie(authCookieName, content,
-      expires = expirationSprayDate,
+      expires = expirationInSprayDate,
       maxAge = expirationInSeconds,
       path = Some("/"),
       httpOnly = true)

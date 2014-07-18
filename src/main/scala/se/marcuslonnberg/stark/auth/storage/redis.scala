@@ -28,7 +28,7 @@ trait RedisAuthSessionsStore {
 
   def saveSession(id: String, auth: AuthInfo) = {
     val key = sessionKey(id)
-    val expirationInSeconds = auth.expires.map(date => (date - DateTime.now.millis).millis / 100)
+    val expirationInSeconds = auth.expires.map(date => (date.getMillis - DateTime.now.getMillis) / 1000)
     client.set(key, auth, exSeconds = expirationInSeconds, NX = true)
   }
 

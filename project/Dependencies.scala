@@ -21,7 +21,7 @@ object Dependencies {
       "org.json4s" %% "json4s-ext" % version)
   }
 
-  val ScalaTest = Seq("org.scalatest" %% "scalatest" % "2.2.0" % "test")
+  val ScalaTest = Seq("org.scalatest" %% "scalatest" % "2.2.1" % "test")
 
   val TypeSafeConfig = {
     Seq("com.typesafe" % "config" % "1.2.1",

@@ -5,15 +5,15 @@ import spray.can.Http
 import spray.http.Uri.Host
 
 object ConnectActor {
-  def props(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) =
-    Props(classOf[ConnectActor], proxiesActor, apiActor, apiHost)
+  def props(sitesActor: ActorRef) =
+    Props(classOf[ConnectActor], sitesActor)
 }
 
-class ConnectActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) extends Actor with ActorLogging {
+class ConnectActor(sitesActor: ActorRef) extends Actor with ActorLogging {
   override def receive = {
     case Http.Connected(remoteAddress, localAddress) =>
       log.info("Connection established from {} to {}", remoteAddress, localAddress)
-      val proxy = context.actorOf(ConnectionActor.props(proxiesActor, apiActor, apiHost))
-      sender ! Http.Register(proxy)
+      val connection = context.actorOf(ConnectionActor.props(sitesActor))
+      sender ! Http.Register(connection)
   }
 }

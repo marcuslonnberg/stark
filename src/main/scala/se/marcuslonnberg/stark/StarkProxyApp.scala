@@ -8,7 +8,9 @@ import akka.util.Timeout
 import com.typesafe.config.{Config, ConfigFactory}
 import net.ceedubs.ficus.Ficus._
 import se.marcuslonnberg.stark.api.ApiActor
-import se.marcuslonnberg.stark.proxy.ProxiesActor
+import se.marcuslonnberg.stark.site.{SitesActor, ApiConf, Location}
+import SitesActor.AddSite
+import se.marcuslonnberg.stark.site.{SitesActor, ApiConf, Location}
 import spray.can.Http
 import spray.can.server.ServerSettings
 import spray.http.Uri
@@ -24,11 +26,10 @@ object StarkProxyApp extends App with SSLSupport {
   val log = Logging(system, this.getClass)
   val conf = ConfigFactory.load()
 
-  val proxies = system.actorOf(ProxiesActor.props(), "proxies")
-  val apiRouting = system.actorOf(ApiActor.props(proxies), "api-routing")
+  val sites = system.actorOf(SitesActor.props(), "sites")
+  val apiRouting = system.actorOf(ApiActor.props(sites), "api-routing")
 
-  val apiHost = Uri.Host(conf.as[String]("server.api-host"))
-  val connector = system.actorOf(ConnectActor.props(proxies, apiRouting, apiHost), "connector")
+  val connector = system.actorOf(ConnectActor.props(sites), "connector")
 
   val bindings = conf.as[List[Config]]("server.bindings")
   log.info(s"Found ${bindings.length} bindings in config")

@@ -4,7 +4,8 @@ import akka.actor.{ActorRef, Props, ActorLogging, Actor}
 import akka.io.IO
 import akka.io.Tcp.{ConnectionClosed, Connected}
 import com.typesafe.config.ConfigFactory
-import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, ProxyRequestRouting}
+import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, SiteRequestRouting}
+import se.marcuslonnberg.stark.site.ProxyConf
 import spray.can.Http
 import spray.can.client.ClientConnectionSettings
 import spray.http.HttpHeaders.RawHeader
@@ -26,7 +27,7 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
   def receive = firstRequest
 
   def firstRequest: Receive = {
-    case rr: ProxyRequestRouting =>
+    case rr: SiteRequestRouting =>
       log.debug("Connecting")
       val transformedRequest = transformRequest(rr.request, proxy)
       val requestUri = transformedRequest.uri
@@ -69,7 +70,7 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
   }
 
   def request: Receive = {
-    case ProxyRequestRouting(request, receiver) =>
+    case SiteRequestRouting(request, receiver) =>
       val transformedRequest = transformRequest(request, proxy)
 
       io ! transformedRequest

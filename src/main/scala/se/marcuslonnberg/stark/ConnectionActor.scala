@@ -2,22 +2,30 @@ package se.marcuslonnberg.stark
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.Tcp.ConnectionClosed
+import se.marcuslonnberg.stark.ConnectionActor.SiteRequest
 import se.marcuslonnberg.stark.auth.AuthActor
-import se.marcuslonnberg.stark.auth.AuthActor.{AuthResponse, Authenticated, AuthenticatedHeader, AuthenticatedSession}
+import se.marcuslonnberg.stark.auth.AuthActor.{AuthResponse, Authenticated}
 import se.marcuslonnberg.stark.proxy.ProxyRequestActor
-import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, ProxyRequestRouting}
-import spray.http.HttpRequest
-import spray.http.Uri.Host
+import se.marcuslonnberg.stark.site.SitesActor.{GetSiteByUri, GetSiteResponse}
+import se.marcuslonnberg.stark.site.{ActorSite, ProxyConf, Site}
+import spray.http.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 
 object ConnectionActor {
-  def props(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) =
-    Props(classOf[ConnectionActor], proxiesActor, apiActor, apiHost)
+
+  case class SiteRequest(request: HttpRequest, auth: Authenticated, receiver: ActorRef, site: Site) {
+    def requestRelativePath = {
+      val relativePath = request.uri.path.dropChars(site.location.path.length)
+      request.copy(uri = request.uri.copy(path = relativePath))
+    }
+  }
+
+  def props(sitesActor: ActorRef) = Props(classOf[ConnectionActor], sitesActor)
 }
 
-class ConnectionActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host) extends Actor with ActorLogging {
-  val proxyActor = context.actorOf(ProxyRequestActor.props(proxiesActor), "proxy")
+class ConnectionActor(sitesActor: ActorRef) extends Actor with ActorLogging {
+  val authActor = context.actorOf(AuthActor.props(sitesActor), "auth")
 
-  val authActor = context.actorOf(AuthActor.props(proxiesActor), "auth")
+  lazy val proxyConnectionsActor = context.actorOf(ProxyRequestActor.props(), "proxies")
 
   log.debug("Connected")
 
@@ -26,35 +34,41 @@ class ConnectionActor(proxiesActor: ActorRef, apiActor: ActorRef, apiHost: Host)
   def initialRequest: Receive = {
     case request: HttpRequest =>
       authActor ! request
-      context.become(checkLogin(request, sender(), None))
+      context.become(checkAuth(request, sender()))
   }
 
-  def checkLogin(request: HttpRequest, receiver: ActorRef, handler: Option[ActorRef]): Receive = {
+  def checkAuth(request: HttpRequest, receiver: ActorRef): Receive = {
     case AuthResponse(response) =>
       log.debug("Auth response: {}", response)
       receiver ! response
       context.become(initialRequest orElse closeConnection)
+
     case auth: Authenticated =>
       log.debug("User is authenticated")
-
-      if (request.uri.authority.host == apiHost) {
-        apiActor.tell(request, receiver)
-      } else {
-        auth match {
-          case AuthenticatedSession(userInfo, cookie) =>
-            proxyActor ! ProxyRequestRouting(ProxyRequest(request, Some(userInfo), cookie), receiver)
-          case AuthenticatedHeader =>
-            proxyActor ! ProxyRequestRouting(ProxyRequest(request), receiver)
-        }
-      }
-
-      context.become(keepAlive(proxyActor, receiver) orElse closeConnection)
+      sitesActor ! GetSiteByUri(request.uri)
+      context.become(getSite(request, receiver, auth))
   }
 
-  def keepAlive(handler: ActorRef, receiver: ActorRef): Receive = {
-    case request: HttpRequest =>
-      authActor ! request
-      context.become(checkLogin(request, sender(), Some(handler)) orElse closeConnection)
+  def getSite(request: HttpRequest, receiver: ActorRef, auth: Authenticated): Receive = {
+    case GetSiteResponse(None) =>
+      receiver ! HttpResponse(StatusCodes.NotFound, HttpEntity("Site was not found"))
+      context.become(initialRequest orElse closeConnection)
+
+    case GetSiteResponse(Some(site)) =>
+      log.debug("Found site: {}", site)
+      val siteRequest = SiteRequest(request, auth, receiver, site)
+
+      site match {
+        case actorSite: ActorSite =>
+          context.actorSelection(actorSite.recipient) ! siteRequest
+        case proxySite: ProxyConf =>
+          proxyConnectionsActor ! siteRequest
+        case _ =>
+          log.error("Unknown site type")
+          receiver ! HttpResponse(StatusCodes.InternalServerError, HttpEntity("Unknown site type"))
+      }
+
+      context.become(initialRequest orElse closeConnection)
   }
 
   def closeConnection: Receive = {

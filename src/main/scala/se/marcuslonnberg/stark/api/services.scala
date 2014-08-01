@@ -5,8 +5,8 @@ import akka.pattern.ask
 import akka.util.Timeout
 import se.marcuslonnberg.stark.JsonSupport
 import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
-import se.marcuslonnberg.stark.proxy.ProxiesActor._
-import se.marcuslonnberg.stark.proxy.{ProxyConf, ProxyLocation}
+import se.marcuslonnberg.stark.site.SitesActor._
+import se.marcuslonnberg.stark.site.{Location, ProxyConf}
 import se.marcuslonnberg.stark.utils.Directives._
 import spray.http.StatusCodes
 import spray.routing.HttpService
@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 trait ProxiesApiService extends HttpService with JsonSupport {
-  def proxiesActor: ActorRef
+  def sitesActor: ActorRef
 
   implicit def executionContext: ExecutionContext
 
@@ -27,33 +27,33 @@ trait ProxiesApiService extends HttpService with JsonSupport {
     forbiddenWhen(!proxiesEnabled)("Proxies API is disabled") ~
       pathEndOrSingleSlash {
         get {
-          onSuccess(proxiesActor ? GetProxies) {
-            case GetProxiesResponse(proxies) =>
+          onSuccess(sitesActor ? GetSites()) {
+            case GetSitesResponse(proxies) =>
               complete(proxies)
           }
         } ~
           post {
             entity(as[ProxyConf]) { proxy =>
-              onSuccess(proxiesActor ? AddProxy(proxy)) {
-                case AddProxyResponses.Added =>
+              onSuccess(sitesActor ? AddSite(proxy)) {
+                case AddSiteResponses.Added =>
                   complete(proxy)
-                case AddProxyResponses.NotAdded(reason) =>
+                case AddSiteResponses.NotAdded(reason) =>
                   complete(StatusCodes.BadRequest, reason)
-                case AddProxyResponses.AddedWithProblem(reason) =>
+                case AddSiteResponses.AddedWithProblem(reason) =>
                   complete(StatusCodes.ServerError, reason)
               }
             }
           }
       } ~
       path(Rest) { proxyUri =>
-        val location = ProxyLocation(proxyUri)
+        val location = Location(proxyUri)
         get {
-          onSuccess(proxiesActor ? GetProxy(location)) {
-            case GetProxyResponse(proxy) => complete(proxy)
+          onSuccess(sitesActor ? GetSiteByLocation(location)) {
+            case GetSiteResponse(proxy) => complete(proxy)
           }
         } ~
           delete {
-            onSuccess(proxiesActor ? RemoveProxy(location)) {
+            onSuccess(sitesActor ? RemoveProxy(location)) {
               case RemoveProxyResponse(0) =>
                 complete(StatusCodes.NotFound)
               case RemoveProxyResponse(i) =>

@@ -1,19 +1,21 @@
 package se.marcuslonnberg.stark.api
 
-import akka.actor.{Actor, Props, ActorRef}
+import akka.actor.{Actor, ActorRef, Props}
 import com.typesafe.config.ConfigFactory
-import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
 import net.ceedubs.ficus.Ficus._
+import se.marcuslonnberg.stark.ConnectionActor.SiteRequest
+import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
+import se.marcuslonnberg.stark.site.SitesActor.AddSite
+import se.marcuslonnberg.stark.site.{ApiConf, Location}
+
 import scala.concurrent.ExecutionContext
 
 object ApiActor {
   def props(proxiesApiActor: ActorRef) = Props(classOf[ApiActor], proxiesApiActor)
 }
 
-class ApiActor(val proxiesActor: ActorRef) extends Actor with ProxiesApiService with AuthHeadersApiService with AuthSessionsApiService {
+class ApiActor(val sitesActor: ActorRef) extends Actor with ProxiesApiService with AuthHeadersApiService with AuthSessionsApiService {
   override implicit def actorRefFactory = context
-
-  override def receive: Actor.Receive = runRoute(proxiesRoute ~ sessionsRoute ~ headersRoute)
 
   override implicit def executionContext: ExecutionContext = context.dispatcher
 
@@ -28,4 +30,18 @@ class ApiActor(val proxiesActor: ActorRef) extends Actor with ProxiesApiService 
   val sessionsEnabled = config.as[Boolean]("sessions")
 
   val headersEnabled = config.as[Boolean]("headers")
+
+  def receive = receiveSiteRequest orElse runRoute(proxiesRoute ~ sessionsRoute ~ headersRoute)
+
+  def receiveSiteRequest: Receive = {
+    case siteRequest: SiteRequest =>
+      self.tell(siteRequest.requestRelativePath, siteRequest.receiver)
+  }
+
+  override def preStart() = {
+    config.as[Option[String]]("site-location") foreach { locationString =>
+      val location = Location(locationString)
+      sitesActor ! AddSite(ApiConf(location, self.path))
+    }
+  }
 }

@@ -2,19 +2,19 @@ package se.marcuslonnberg.stark.auth
 
 import java.security.SecureRandom
 
-import akka.actor.{ActorRef, Actor, ActorLogging, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.pattern.pipe
+import com.github.nscala_time.time.Imports._
 import com.typesafe.config.ConfigFactory
 import net.ceedubs.ficus.Ficus._
 import se.marcuslonnberg.stark.auth.AuthActor._
-import se.marcuslonnberg.stark.auth.providers.{AuthProviderRequestActor, AuthProvider, GoogleAuthProvider}
+import se.marcuslonnberg.stark.auth.providers.{AuthProvider, AuthProviderRequestActor, GoogleAuthProvider}
 import se.marcuslonnberg.stark.auth.storage.RedisAuthStore
-import se.marcuslonnberg.stark.proxy.ProxiesActor.{ProxyForResponse, ProxyFor}
+import se.marcuslonnberg.stark.site.SitesActor.{GetSiteByUri, GetSiteResponse}
 import se.marcuslonnberg.stark.utils.Implicits._
-import spray.http.StatusCodes.{Unauthorized, Redirection, TemporaryRedirect}
-import spray.http.{DateTime => SprayDateTime, _}
-import com.github.nscala_time.time.Imports._
 import se.marcuslonnberg.stark.utils._
+import spray.http.StatusCodes.{Redirection, TemporaryRedirect, Unauthorized}
+import spray.http.{DateTime => SprayDateTime, _}
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.matching.Regex
@@ -43,11 +43,11 @@ object AuthActor {
 
   case class AuthCallback(requestUri: Uri, userInfo: UserInfo)
 
-  def props(proxiesActor: ActorRef) = Props(classOf[AuthActor], proxiesActor)
+  def props(sitesActor: ActorRef) = Props(classOf[AuthActor], sitesActor)
 
 }
 
-class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with CookieAuth with HeaderAuth with SecureRandomIdGenerator with PathRequests with RedisAuthStore {
+class AuthActor(sitesActor: ActorRef) extends Actor with ActorLogging with CookieAuth with HeaderAuth with SecureRandomIdGenerator with PathRequests with RedisAuthStore {
 
   import context.dispatcher
 
@@ -157,9 +157,9 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
   def checkCookie(request: HttpRequest, sourceUri: Uri, cookie: HttpCookie): Receive = {
     case Some(authInfo: AuthInfo) =>
       log.debug("Found valid cookie: {}", authInfo)
-      // Before we make the 'set cookie' request we must check that the source URI is an URL that have a proxy
+      // Before we make the 'set cookie' request we must check that the source URI is an URL that have a site
       // configuration, otherwise it would be possible to steal the cookie.
-      proxiesActor ! ProxyFor(sourceUri)
+      sitesActor ! GetSiteByUri(sourceUri)
       context.become(checkUri(sourceUri, cookie))
 
     case None =>
@@ -171,8 +171,8 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
   }
 
   def checkUri(sourceUri: Uri, cookie: HttpCookie): Receive = {
-    case ProxyForResponse(Some(conf)) =>
-      log.debug("Source uri have a proxy conf, {}, {}", sourceUri, conf)
+    case GetSiteResponse(Some(site)) =>
+      log.debug("Source uri have a site, {}, {}", sourceUri, site)
 
       val redirectionUri = sourceUri.withPath(setCookiePath)
         .withQuery(sourceUriParameter -> sourceUri.toString(), cookieParameter -> cookie.content)
@@ -180,9 +180,9 @@ class AuthActor(proxiesActor: ActorRef) extends Actor with ActorLogging with Coo
       context.parent ! AuthResponse(redirect)
       context.become(receive)
 
-    case ProxyForResponse(None) =>
-      log.debug("Source URI ({}) is not behind a proxy, request terminated.", sourceUri)
-      val response = HttpResponse(Unauthorized, s"Permission denied! There is no proxy for $sourceUri")
+    case GetSiteResponse(None) =>
+      log.debug("Source URI ({}) is not a site, request terminated.", sourceUri)
+      val response = HttpResponse(Unauthorized, s"Permission denied! There is no site for $sourceUri")
       context.parent ! AuthResponse(response)
       context.become(receive)
   }

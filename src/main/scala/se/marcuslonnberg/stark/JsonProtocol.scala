@@ -1,7 +1,7 @@
 package se.marcuslonnberg.stark
 
-import spray.httpx.Json4sSupport
 import org.json4s._
+import spray.httpx.Json4sSupport
 
 trait JsonSupport extends Json4sSupport {
   implicit def json4sFormats: Formats = DefaultFormats +
@@ -9,8 +9,9 @@ trait JsonSupport extends Json4sSupport {
     JsonFormats.uriFormat +
     JsonFormats.uriHostFormat +
     JsonFormats.uriPathFormat +
+    JsonFormats.actorPathFormat +
     JsonFormats.proxyLocationFormat +
-    JsonFormats.proxyFormat
+    JsonFormats.proxyConfFormat
 }
 
 object JsonProtocol extends JsonSupport

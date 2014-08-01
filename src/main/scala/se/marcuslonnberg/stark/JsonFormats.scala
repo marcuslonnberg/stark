@@ -1,9 +1,10 @@
 package se.marcuslonnberg.stark
 
+import akka.actor.ActorPath
 import org.json4s.{FieldSerializer, CustomSerializer}
+import se.marcuslonnberg.stark.site.{Header, Location, ProxyConf}
 import spray.http.Uri
 import org.json4s.JsonAST._
-import se.marcuslonnberg.stark.proxy.{ProxyLocation, Header, ProxyConf}
 
 object JsonFormats {
   implicit val uriFormat = new CustomSerializer[Uri](format => ( {
@@ -24,14 +25,20 @@ object JsonFormats {
     case path: Uri.Path => JString(path.toString())
   }))
 
-  implicit val headerFormat = FieldSerializer[Header]()
-
-  implicit val proxyLocationFormat = new CustomSerializer[ProxyLocation](format => ( {
-    case JString(location) => ProxyLocation(location)
-    case JObject(JField("host", JString(host)) :: JField("path", JString(path)) :: Nil) => ProxyLocation(host, path)
+  implicit val actorPathFormat = new CustomSerializer[ActorPath](format => ( {
+    case JString(path) => ActorPath.fromString(path)
   }, {
-    case location: ProxyLocation => JString(location.toString)
+    case path: ActorPath => JString(path.toString)
   }))
 
-  implicit val proxyFormat = FieldSerializer[ProxyConf]()
+  implicit val headerFormat = FieldSerializer[Header]()
+
+  implicit val proxyLocationFormat = new CustomSerializer[Location](format => ( {
+    case JString(location) => Location(location)
+    case JObject(JField("host", JString(host)) :: JField("path", JString(path)) :: Nil) => Location(host, path)
+  }, {
+    case location: Location => JString(location.toString)
+  }))
+
+  implicit val proxyConfFormat = FieldSerializer[ProxyConf]()
 }

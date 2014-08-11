@@ -22,7 +22,7 @@ trait RedisProxyStorage extends RedisConnection {
 
   def getProxyKeys = client.keys(proxyKeyPrefix + "*")
 
-  def getProxies = getProxyKeys.flatMap(client.mget[ProxyConf])
+  def getProxies = getProxyKeys.filter(_.nonEmpty).flatMap(client.mget[ProxyConf])
 
   def getProxy(location: Location) = client.get[ProxyConf](proxyKey(location))
 

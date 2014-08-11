@@ -1,13 +1,13 @@
 package se.marcuslonnberg.stark
 
-import javax.net.ssl.{TrustManagerFactory, KeyManagerFactory, SSLContext}
-import spray.io.{SSLContextProvider, ServerSSLEngineProvider}
 import java.io._
 import java.security._
 import java.security.cert.{Certificate, CertificateFactory}
 import java.security.spec.PKCS8EncodedKeySpec
-import scala.io.Source
-import se.marcuslonnberg.stark.utils.Implicits._
+import javax.net.ssl.{KeyManagerFactory, SSLContext, TrustManagerFactory}
+
+import org.apache.commons.ssl.PKCS8Key
+import spray.io.{SSLContextProvider, ServerSSLEngineProvider}
 
 trait SSLSupport {
   val algorithm = "SunX509"
@@ -53,18 +53,16 @@ trait SSLSupport {
     val certificateFactory = CertificateFactory.getInstance("X.509")
     val certs = certificateFactory.generateCertificates(certificateStream)
 
-    var chain = new Array[Certificate](1)
+    var chain = new Array[Certificate](certs.size())
     chain = certs.toArray(chain)
     certificateStream.close()
     chain
   }
 
   def readPrivateKey(privateKeyFilename: String): PrivateKey = {
-    // Convert the private key from PEM to DER format
-    // Remove the header and footer and read the data that is base 64 formatted
-    val lines = Source.fromFile(privateKeyFilename).getLines().toList.filterNot(line => line.startsWith("-----") || line.isEmpty)
-    val encodedKey = lines.mkString.fromBase64
-
+    val fileStream = new FileInputStream(privateKeyFilename)
+    val key = new PKCS8Key(fileStream, Array.empty[Char]) // Empty password
+    val encodedKey = key.getDecryptedBytes
     val rsaKeyFactory = KeyFactory.getInstance("RSA")
     rsaKeyFactory.generatePrivate(new PKCS8EncodedKeySpec(encodedKey))
   }

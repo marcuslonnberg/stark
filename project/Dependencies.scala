@@ -36,7 +36,9 @@ object Dependencies {
 
   val RedisScala = Seq("com.etaty.rediscala" %% "rediscala" % "1.3.1")
 
-  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala ++ CommonsCodec ++ RedisScala
+  val NotYetCommonsSSL = Seq("ca.juliusdavies" % "not-yet-commons-ssl" % "0.3.11")
+
+  val all = Akka ++ Spray ++ Json4s ++ ScalaTest ++ TypeSafeConfig ++ Logback ++ NScala ++ CommonsCodec ++ RedisScala ++ NotYetCommonsSSL
 
   object Resolvers {
     val Spray = "spray repo" at "http://repo.spray.io/"

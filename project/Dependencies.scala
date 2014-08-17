@@ -2,7 +2,7 @@ import sbt._
 
 object Dependencies {
   val Akka = {
-    val version = "2.3.4"
+    val version = "2.3.5"
     Seq("com.typesafe.akka" %% "akka-actor" % version,
       "com.typesafe.akka" %% "akka-slf4j" % version)
   }

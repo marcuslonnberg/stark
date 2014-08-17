@@ -1,11 +1,14 @@
 package se.marcuslonnberg.stark.site
 
+import java.util.NoSuchElementException
+
 import akka.actor.{Actor, ActorLogging, Props}
 import akka.pattern.pipe
 import se.marcuslonnberg.stark.api.RedisProxyStorage
 import se.marcuslonnberg.stark.site.SitesActor._
+import se.marcuslonnberg.stark.site.Implicits._
 import spray.http._
-
+import scala.collection.Set
 import scala.util.{Failure, Success}
 
 object SitesActor {
@@ -56,34 +59,36 @@ class SitesActor extends Actor with ActorLogging {
     storage.getProxies onComplete {
       case Success(proxies) =>
         self ! AddProxies(proxies.flatten.toList)
+      case Failure(ex: NoSuchElementException) =>
+        log.info("No proxies to load")
       case Failure(ex) =>
         log.error(ex, "Could not load proxies")
     }
   }
 
-  override def receive: Receive = state(List.empty)
+  override def receive: Receive = state(Set.empty)
 
-  def state(sites: List[Site]): Receive = {
+  def state(sites: Set[Site]): Receive = {
     case GetSiteByUri(requestUri) =>
       val site = getSite(sites, requestUri)
       sender ! GetSiteResponse(site)
 
     case AddProxies(newProxies) =>
       log.info("Adding {} proxies", newProxies.length)
-      context.become(state(newProxies ++ sites))
+      context.become(state(sites ++ newProxies))
 
     case GetSites(onlyProxies) =>
       val response =
         if (onlyProxies) sites.collect { case p: ProxyConf => p}
         else sites
-      sender ! GetSitesResponse(response)
+      sender ! GetSitesResponse(response.toList)
 
     case AddSite(site) =>
       if (sites.exists(_.location == site.location)) {
         sender ! AddSiteResponses.NotAdded(s"A site already exists with the same location (${site.location})")
       } else {
         log.info("Adding site: {}", site)
-        context.become(state(site :: sites))
+        context.become(state(sites + site))
 
         site match {
           case proxy: ProxyConf =>
@@ -107,13 +112,16 @@ class SitesActor extends Actor with ActorLogging {
       storage.removeProxy(location).map(RemoveProxyResponse) pipeTo sender()
   }
 
-  def getSite(sites: List[Site], requestUri: Uri): Option[Site] = {
-    val requestAddress = requestUri.authority.host
-    val requestPath = requestUri.path
-    sites.find { site =>
-      val path = requestPath.startsWith(site.location.path)
-      val address = requestAddress == site.location.host
-      address && path
-    }
+  def getSite(sites: Set[Site], requestUri: Uri): Option[Site] = {
+    val matchingSites = sites.filter(uriMatchesSite(requestUri))
+
+    if (matchingSites.isEmpty) None
+    else Some(matchingSites.maxBy(_.location.path.length))
+  }
+
+  def uriMatchesSite(requestUri: Uri)(site: Site) = {
+    val path = requestUri.path.isRelativeTo(site.location.path)
+    val address = requestUri.authority.host == site.location.host
+    address && path
   }
 }

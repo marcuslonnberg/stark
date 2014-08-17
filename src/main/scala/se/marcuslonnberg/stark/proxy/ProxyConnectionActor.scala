@@ -1,10 +1,11 @@
 package se.marcuslonnberg.stark.proxy
 
-import akka.actor.{ActorRef, Props, ActorLogging, Actor}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.IO
-import akka.io.Tcp.{ConnectionClosed, Connected}
+import akka.io.Tcp.{Connected, ConnectionClosed}
 import com.typesafe.config.ConfigFactory
 import se.marcuslonnberg.stark.proxy.ProxyRequestActor.{ProxyRequest, SiteRequestRouting}
+import se.marcuslonnberg.stark.site.Implicits._
 import se.marcuslonnberg.stark.site.ProxyConf
 import spray.can.Http
 import spray.can.client.ClientConnectionSettings
@@ -31,6 +32,7 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
       log.debug("Connecting")
       val transformedRequest = transformRequest(rr.request, proxy)
       val requestUri = transformedRequest.uri
+      log.debug("Transformed request URI: {}", transformedRequest.uri)
 
       val settings = ClientConnectionSettings(system).copy(chunklessStreaming = false)
       val port = requestUri.effectivePort
@@ -72,13 +74,14 @@ class ProxyConnectionActor(proxy: ProxyConf) extends Actor with ActorLogging wit
   def request: Receive = {
     case SiteRequestRouting(request, receiver) =>
       val transformedRequest = transformRequest(request, proxy)
+      log.debug("Transformed request URI: {}", transformedRequest.uri)
 
       io ! transformedRequest
       context.become(response(receiver))
   }
 
   override def unhandled(message: Any) = {
-      log.warning("Unhandled: {}", message)
+    log.warning("Unhandled: {}", message)
   }
 }
 
@@ -89,8 +92,17 @@ trait RequestTransformer {
 
   def transformRequest(proxyRequest: ProxyRequest, conf: ProxyConf): HttpRequest = {
     val requestUri = proxyRequest.request.uri
-    val proxyPath = requestUri.path.dropChars(conf.location.path.length)
-    val uri = conf.upstream.withPath(conf.upstream.path ++ proxyPath)
+    val proxyPath = requestUri.path.relativizeTo(conf.location.path).get
+    val upstreamPath = {
+      val p = conf.upstream.path
+      // Remove ending slash
+      if (p.reverse.startsWithSlash) p.reverse.tail.reverse
+      else p
+    }
+    val uri = conf.upstream
+      .withPath(upstreamPath ++ proxyPath)
+      .withQuery(requestUri.query)
+      .withFragment(requestUri.fragment.getOrElse(""))
 
     val newHeaders = conf.headers.map(header => RawHeader(header.name, header.value))
 

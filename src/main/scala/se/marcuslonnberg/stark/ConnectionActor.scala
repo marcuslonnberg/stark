@@ -6,15 +6,17 @@ import se.marcuslonnberg.stark.ConnectionActor.SiteRequest
 import se.marcuslonnberg.stark.auth.AuthActor
 import se.marcuslonnberg.stark.auth.AuthActor.{AuthResponse, Authenticated}
 import se.marcuslonnberg.stark.proxy.ProxyRequestActor
+import se.marcuslonnberg.stark.site.Implicits._
 import se.marcuslonnberg.stark.site.SitesActor.{GetSiteByUri, GetSiteResponse}
-import se.marcuslonnberg.stark.site.{ActorSite, ProxyConf, Site}
+import se.marcuslonnberg.stark.site.{ActorSite, ProxyConf, Site, StaticContentConf}
+import se.marcuslonnberg.stark.static.StaticContentActor
 import spray.http.{HttpEntity, HttpRequest, HttpResponse, StatusCodes}
 
 object ConnectionActor {
 
   case class SiteRequest(request: HttpRequest, auth: Authenticated, receiver: ActorRef, site: Site) {
     def requestRelativePath = {
-      val relativePath = request.uri.path.dropChars(site.location.path.length)
+      val relativePath = request.uri.path.relativizeTo(site.location.path).get
       request.copy(uri = request.uri.copy(path = relativePath))
     }
   }
@@ -63,6 +65,8 @@ class ConnectionActor(sitesActor: ActorRef) extends Actor with ActorLogging {
           context.actorSelection(actorSite.recipient) ! siteRequest
         case proxySite: ProxyConf =>
           proxyConnectionsActor ! siteRequest
+        case staticSite: StaticContentConf =>
+          context.actorOf(StaticContentActor.props(staticSite)) ! siteRequest
         case _ =>
           log.error("Unknown site type")
           receiver ! HttpResponse(StatusCodes.InternalServerError, HttpEntity("Unknown site type"))

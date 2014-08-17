@@ -55,7 +55,7 @@ trait ProxiesApiService extends HttpService with JsonSupport {
           delete {
             onSuccess(sitesActor ? RemoveProxy(location)) {
               case RemoveProxyResponse(0) =>
-                complete(StatusCodes.NotFound)
+                complete(StatusCodes.NotFound, "Proxy not found")
               case RemoveProxyResponse(i) =>
                 complete(StatusCodes.OK, i)
             }

@@ -45,3 +45,5 @@ trait ActorSite extends Site {
 }
 
 case class ApiConf(location: Location, recipient: ActorPath) extends ActorSite
+
+case class StaticContentConf(location: Location, path: String) extends Site

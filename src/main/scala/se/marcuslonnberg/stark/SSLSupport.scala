@@ -13,15 +13,26 @@ trait SSLSupport {
   val algorithm = "SunX509"
   val protocol = "TLS"
 
+  val ciphers = List(
+    "SSL_RSA_WITH_RC4_128_MD5",
+    "SSL_RSA_WITH_RC4_128_SHA",
+    "TLS_RSA_WITH_AES_128_CBC_SHA",
+    "TLS_ECDHE_RSA_WITH_RC4_128_SHA",
+    "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+    "TLS_RSA_WITH_AES_128_CBC_SHA256",
+    "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256",
+    "SSL_RSA_WITH_3DES_EDE_CBC_SHA",
+    "TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA")
+
+  val protocols = List("SSLv3", "SSLv2Hello", "TLSv1", "TLSv1.1", "TLSv1.2")
+
   implicit def sslEngineProvider(implicit context: SSLContextProvider): ServerSSLEngineProvider = {
     ServerSSLEngineProvider { engine =>
-      engine.setEnabledCipherSuites(Array(
-        "TLS_DHE_RSA_WITH_AES_128_CBC_SHA",
-        "SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA",
-        "TLS_RSA_WITH_AES_128_CBC_SHA",
-        "SSL_RSA_WITH_3DES_EDE_CBC_SHA"))
+      val enabledCiphers = ciphers.intersect(engine.getSupportedCipherSuites)
+      engine.setEnabledCipherSuites(enabledCiphers.toArray)
 
-      engine.setEnabledProtocols(Array("TLSv1.2", "TLSv1.1", "TLSv1"))
+      val enabledProtocols = protocols.intersect(engine.getSupportedProtocols)
+      engine.setEnabledProtocols(enabledProtocols.toArray)
       engine
     }
   }

@@ -14,6 +14,13 @@ libraryDependencies ++= Dependencies.all
 
 resolvers ++= Dependencies.Resolvers.all
 
+assemblyMergeStrategy in assembly := {
+  case PathList("org", "mockito", x @ _*) if x.lastOption.exists(_.endsWith(".class")) => MergeStrategy.first
+  case x =>
+    val oldStrategy = (assemblyMergeStrategy in assembly).value
+    oldStrategy(x)
+}
+
 Revolver.settings
 
 Revolver.enableDebugging(port = 5005, suspend = false)

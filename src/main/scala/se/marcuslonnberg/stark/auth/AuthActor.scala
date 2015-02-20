@@ -70,6 +70,13 @@ class AuthActor(sitesActor: ActorRef) extends Actor with ActorLogging with Cooki
     }
   }
 
+  val useWildcardCookieDomain: Boolean = config.as[Boolean]("wildcard-cookie-domain")
+
+  def cookieDomain(uri: Uri): Option[String] = {
+    if (useWildcardCookieDomain) Some(wildcardCookieDomain(uri))
+    else None
+  }
+
   def checkUri(source: Uri) = checkUriBase.withQuery(sourceUriParameter -> source.toString())
 
   def receive = authRequest orElse regularRequest
@@ -112,7 +119,7 @@ class AuthActor(sitesActor: ActorRef) extends Actor with ActorLogging with Cooki
       log.debug("Set cookie request: {}", request.uri)
       getSetCookieInfo(request) match {
         case Success(SetCookieInfo(cookie, uri)) =>
-          val redirect = redirectionResponse(TemporaryRedirect, uri) + setAuthCookieHeader(cookie, None)
+          val redirect = redirectionResponse(TemporaryRedirect, uri) + setAuthCookieHeader(cookie, None, cookieDomain(uri))
           context.parent ! AuthResponse(redirect)
         case Failure(message) =>
           val response = unauthorizedResponse(message)
@@ -218,7 +225,7 @@ class AuthActor(sitesActor: ActorRef) extends Actor with ActorLogging with Cooki
 
   def saveSession(request: HttpRequest, sourceUri: Uri, id: String, expiration: Option[DateTime]): Receive = {
     case SaveSessionResult(true) =>
-      val redirect = redirectionResponse(TemporaryRedirect, sourceUri) + setAuthCookieHeader(id, expiration)
+      val redirect = redirectionResponse(TemporaryRedirect, sourceUri) + setAuthCookieHeader(id, expiration, cookieDomain(sourceUri))
       context.parent ! AuthResponse(redirect)
       context.become(receive)
 
@@ -298,9 +305,13 @@ trait SecureRandomIdGenerator {
 trait CookieAuth extends Utils {
   def authCookieName: String
 
+  def wildcardCookieDomain(uri: Uri): String = {
+    "." + uri.authority.host.address.split("\\.").takeRight(2).mkString(".")
+  }
+
   def getAuthCookie(request: HttpRequest) = getCookie(authCookieName)(request)
 
-  def setAuthCookieHeader(content: String, expiration: Option[DateTime]) = {
+  def setAuthCookieHeader(content: String, expiration: Option[DateTime] = None, domain: Option[String] = None) = {
     val expirationInSprayDate = expiration.map(d => SprayDateTime(d.getMillis))
     val expirationInSeconds = expiration.map(date => (date.getMillis - DateTime.now.getMillis) / 1000)
 
@@ -308,7 +319,8 @@ trait CookieAuth extends Utils {
       expires = expirationInSprayDate,
       maxAge = expirationInSeconds,
       path = Some("/"),
-      httpOnly = true)
+      httpOnly = true,
+      domain = domain)
     HttpHeaders.`Set-Cookie`(cookie)
   }
 }

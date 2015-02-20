@@ -6,7 +6,7 @@ name := "stark"
 
 organization := "se.marcuslonnberg"
 
-version := "0.1-SNAPSHOT"
+version := "0.1.0"
 
 scalaVersion := "2.11.5"
 

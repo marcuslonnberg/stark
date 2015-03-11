@@ -1,7 +1,3 @@
-import sbtdocker.ImageName
-import sbtdocker.Plugin.DockerKeys._
-import sbtdocker.mutable.Dockerfile
-
 name := "stark"
 
 organization := "se.marcuslonnberg"
@@ -25,7 +21,7 @@ Revolver.settings
 
 Revolver.enableDebugging(port = 5005, suspend = false)
 
-dockerSettings
+enablePlugins(DockerPlugin)
 
 docker <<= (docker dependsOn assembly)
 dockerfile in docker := {
@@ -40,10 +36,6 @@ dockerfile in docker := {
   }
 }
 
-imageName in docker := {
-  ImageName(
-    namespace = Some("marcuslonnberg"),
-    repository = name.value,
-    tag = Some(version.value)
-  )
-}
+imageNames in docker := Seq(
+  ImageName("marcuslonnberg/" + name.value +":" + version.value)
+)
